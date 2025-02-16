@@ -50,46 +50,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
   wss.on("connection", (ws) => {
     log("New WebSocket connection established");
 
+    // Send initial pong to establish connection health
+    ws.send(JSON.stringify({ type: 'pong' }));
+
     ws.on("message", async (data) => {
       try {
-        const message = JSON.parse(data.toString());
-        log(`Received message: ${JSON.stringify(message)}`);
+        const rawMessage = data.toString();
+        const message = JSON.parse(rawMessage);
+        log(`Received message: ${rawMessage}`);
+
+        // Handle ping messages
+        if (message.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+          return;
+        }
 
         const parsed = insertMessageSchema.safeParse({
           ...message,
           metadata: message.metadata || {},
         });
 
-        if (parsed.success) {
-          const savedMessage = await storage.addMessage(parsed.data);
-          const response = await agentManager.handleMessage(savedMessage);
+        if (!parsed.success) {
+          log(`Invalid message format: ${JSON.stringify(parsed.error)}`);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              content: "Invalid message format",
+              role: "system",
+              metadata: { 
+                error: true,
+                validationError: parsed.error.errors
+              },
+              timestamp: new Date().toISOString(),
+            }));
+          }
+          return;
+        }
 
-          // Broadcast the user message to all clients
+        const savedMessage = await storage.addMessage(parsed.data);
+        const response = await agentManager.handleMessage(savedMessage);
+
+        // Broadcast the user message to all clients
+        wss.clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(savedMessage));
+          }
+        });
+
+        // If there's a response, save and broadcast it
+        if (response) {
+          const savedResponse = await storage.addMessage(response);
+          log(`Sending AI response: ${JSON.stringify(savedResponse)}`);
           wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify(savedMessage));
+              client.send(JSON.stringify(savedResponse));
             }
           });
-
-          // If there's a response, save and broadcast it
-          if (response) {
-            const savedResponse = await storage.addMessage(response);
-            log(`Sending AI response: ${JSON.stringify(savedResponse)}`);
-            wss.clients.forEach((client) => {
-              if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify(savedResponse));
-              }
-            });
-          }
         }
       } catch (error) {
-        log(`WebSocket error: ${error}`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        log(`WebSocket error: ${errorMessage}`);
         // Send error message back to the client
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
             content: "An error occurred while processing your message",
             role: "system",
-            metadata: { error: true },
+            metadata: { 
+              error: true,
+              errorMessage: errorMessage
+            },
             timestamp: new Date().toISOString(),
           }));
         }
