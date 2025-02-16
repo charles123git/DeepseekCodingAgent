@@ -17,11 +17,11 @@ export class TogetherService {
   private model: string;
   private simulateErrors: boolean;
 
-  constructor(options = { simulateErrors: true }) {
+  constructor(options = { simulateErrors: false }) {
     this.apiKey = process.env.TOGETHER_API_KEY || "";
-    this.baseUrl = "https://api.together.xyz/v1";
+    this.baseUrl = "https://api.together.xyz/inference";
     this.fallbackMode = !this.apiKey;
-    this.model = "CodeLlama-34b-Instruct";  // Updated to use a supported model
+    this.model = "togethercomputer/CodeLlama-34b-Instruct";
     this.simulateErrors = options.simulateErrors;
 
     if (!this.apiKey) {
@@ -38,7 +38,7 @@ export class TogetherService {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      const response = await fetch(this.baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -46,15 +46,13 @@ export class TogetherService {
         },
         body: JSON.stringify({
           model: this.model,
-          messages: [
-            {
-              role: "system",
-              content: "You are a helpful AI coding assistant. Provide clear, concise responses with code examples when relevant.",
-            },
-            { role: "user", content: prompt }
-          ],
-          temperature: 0.3,
-          max_tokens: 1000,
+          prompt: prompt,
+          max_tokens: 1024,
+          temperature: 0.7,
+          top_p: 0.7,
+          top_k: 50,
+          repetition_penalty: 1,
+          stop: ["</s>", "[/INST]"]
         }),
       });
 
@@ -82,10 +80,8 @@ export class TogetherService {
       }
 
       const data = await response.json();
-      const parsed = togetherResponseSchema.safeParse(data);
-
-      if (!parsed.success) {
-        console.error("Invalid API response format:", parsed.error);
+      if (!data.output || typeof data.output.text !== 'string') {
+        console.error("Invalid API response format:", data);
         return {
           content: "Received an invalid response format. Switching to demo mode.",
           error: true
@@ -93,7 +89,7 @@ export class TogetherService {
       }
 
       return { 
-        content: parsed.data.choices[0].message.content,
+        content: data.output.text.trim(),
         error: false
       };
     } catch (error) {
