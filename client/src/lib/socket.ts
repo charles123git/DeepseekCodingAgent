@@ -10,9 +10,9 @@ interface WebSocketConfig {
 }
 
 const DEFAULT_CONFIG: Required<WebSocketConfig> = {
-  maxRetries: 1,
+  maxRetries: 3,  // Increased from 1 to allow more retry attempts
   initialRetryDelay: 1000,
-  maxRetryDelay: 2000,
+  maxRetryDelay: 5000,  // Increased to allow for longer delays between retries
   healthCheckInterval: 30000,
   connectionTimeout: 5000,
 };
@@ -29,19 +29,23 @@ export class WebSocketManager extends EventEmitter {
   private readonly config: Required<WebSocketConfig>;
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
   private isCleanedUp: boolean = false;
+  private isReconnecting: boolean = false;  // Added to prevent multiple reconnection attempts
 
   constructor(config: WebSocketConfig = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.retryDelay = this.config.initialRetryDelay;
-    this.circuitBreaker = new CircuitBreaker(3, 5000); // More conservative circuit breaker
+    this.circuitBreaker = new CircuitBreaker(3, 10000); // Increased timeout
   }
 
   connect(): void {
-    if (this.isCleanedUp) {
-      log("Connection attempt blocked - cleanup flag is set", { 
+    if (this.isCleanedUp || this.isReconnecting) {
+      log("Connection attempt blocked - cleanup flag or reconnection in progress", { 
         level: 'warn',
-        context: { cleaned: this.isCleanedUp }
+        context: { 
+          cleaned: this.isCleanedUp,
+          reconnecting: this.isReconnecting
+        }
       });
       return;
     }
@@ -64,7 +68,7 @@ export class WebSocketManager extends EventEmitter {
       return;
     }
 
-    this.cleanup();
+    this.cleanup(false);  // Don't set isCleanedUp flag when reconnecting
     this.initializeConnection();
   }
 
@@ -101,6 +105,7 @@ export class WebSocketManager extends EventEmitter {
 
       log("WebSocket connection established", { level: 'info' });
       this.connectionState = 'connected';
+      this.isReconnecting = false;  // Reset reconnecting flag
       this.circuitBreaker.recordSuccess();
       this.retryCount = 0;
       this.retryDelay = this.config.initialRetryDelay;
@@ -179,7 +184,6 @@ export class WebSocketManager extends EventEmitter {
     this.connectionState = 'disconnected';
     this.emitStateChange();
 
-    // Clear health check interval
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
@@ -202,12 +206,21 @@ export class WebSocketManager extends EventEmitter {
   }
 
   private handleReconnection(): void {
-    if (this.retryCount >= this.config.maxRetries || this.isCleanedUp) {
-      log("Maximum WebSocket reconnection attempts reached or cleanup", { level: 'warn' });
+    if (this.retryCount >= this.config.maxRetries || this.isCleanedUp || this.isReconnecting) {
+      log("Maximum WebSocket reconnection attempts reached or cleanup/reconnection in progress", { 
+        level: 'warn',
+        context: {
+          retryCount: this.retryCount,
+          maxRetries: this.config.maxRetries,
+          isCleanedUp: this.isCleanedUp,
+          isReconnecting: this.isReconnecting
+        }
+      });
       return;
     }
 
-    const jitter = Math.random() * 200; // Reduced jitter
+    this.isReconnecting = true;
+    const jitter = Math.random() * 500;  // Increased jitter range
     const delay = Math.min(this.retryDelay + jitter, this.config.maxRetryDelay);
 
     log("Scheduling WebSocket reconnection", { 
@@ -221,7 +234,7 @@ export class WebSocketManager extends EventEmitter {
 
     this.reconnectTimeout = window.setTimeout(() => {
       this.retryCount++;
-      this.retryDelay *= 2;
+      this.retryDelay = Math.min(this.retryDelay * 1.5, this.config.maxRetryDelay);  // More gradual backoff
       this.connect();
     }, delay);
   }
@@ -268,9 +281,15 @@ export class WebSocketManager extends EventEmitter {
     }
   }
 
-  cleanup(): void {
-    log("Cleaning up WebSocket manager", { level: 'info' });
-    this.isCleanedUp = true;
+  cleanup(fullCleanup: boolean = true): void {
+    log("Cleaning up WebSocket manager", { 
+      level: 'info',
+      context: { fullCleanup }
+    });
+
+    if (fullCleanup) {
+      this.isCleanedUp = true;
+    }
 
     if (this.socket) {
       this.socket.close();
@@ -289,7 +308,10 @@ export class WebSocketManager extends EventEmitter {
 
     this.connectionState = 'disconnected';
     this.emitStateChange();
-    this.removeAllListeners();
+
+    if (fullCleanup) {
+      this.removeAllListeners();
+    }
   }
 
   getState(): string {

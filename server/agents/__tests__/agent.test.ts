@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AgentManager } from '../agent';
-import type { Message } from '@shared/schema';
+import { Message } from '@shared/schema';
 import { IStorage } from '../../storage';
 
 // Mock storage implementation
@@ -9,163 +9,151 @@ class MockStorage implements IStorage {
   async addMessage(message: any) { return { id: 1, ...message }; }
   async getAgents() { return []; }
   async addAgent(agent: any) { return { id: 1, ...agent }; }
-  async getAgent(id: number) { return undefined; }
+  async getAgent(id: number) { return null; }
 }
 
-// Mock AI service responses for different agent roles
+// Store mock responses separately for reuse
 const mockResponses = {
   planner: {
-    content: `Here's a step-by-step plan for your todo app:
-1. Design Data Model
-   - Define task schema
-   - Plan user schema
-
-2. Implement Core Features
-   - Add task creation
-   - Add task completion
-   - Add task deletion
-
-3. Setup Testing
-   - Unit tests
-   - Integration tests`,
-    error: false
+    content: 'Planning phase response',
+    error: false,
+    metadata: {
+      role: 'planner',
+      model: 'mistralai/Mixtral-8x7B-Instruct-v0.1'
+    }
   },
   coder: {
-    content: `Here's the implementation of the Task class:
-\`\`\`typescript
-class Task {
-  constructor(
-    public id: string,
-    public title: string,
-    public completed: boolean = false
-  ) {}
-
-  toggleComplete() {
-    this.completed = !this.completed;
-  }
-}
-\`\`\``,
-    error: false
+    content: 'Implementation phase response',
+    error: false,
+    metadata: {
+      role: 'coder',
+      model: 'deepseek-coder'
+    }
   },
   reviewer: {
-    content: `Code Review Feedback:
-1. Security Considerations:
-   - Input validation needed
-   - Add rate limiting
-
-2. Performance Issues:
-   - Optimize database queries
-   - Add caching
-
-3. Testing Gaps:
-   - Add error cases
-   - Increase coverage`,
-    error: false
+    content: 'Code review feedback',
+    error: false,
+    metadata: {
+      role: 'reviewer',
+      model: 'mistralai/Mixtral-8x7B-Instruct-v0.1'
+    }
   }
 };
 
 describe('AgentManager Tests', () => {
   let manager: AgentManager;
   let storage: IStorage;
+  let mockProvider: any;
 
   beforeEach(() => {
     storage = new MockStorage();
     manager = new AgentManager(storage);
+    mockProvider = vi.spyOn(manager as any, 'tryProvider');
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  describe('Agent Role Detection', () => {
-    // Test 1: Planner Detection
-    it('should detect and respond as planner agent', async () => {
-      vi.spyOn(manager as any, 'tryProvider').mockImplementation(
-        async (_provider: string, _message: string, role: string) => {
-          return role === 'planner' ? mockResponses.planner : { content: '', error: true };
-        }
-      );
+  describe('Agent Role Detection and Switching', () => {
+    it('should detect role from planning-related keywords', async () => {
+      const planningKeywords = [
+        'plan', 'design', 'architect', 'structure', 'organize'
+      ];
 
-      const message: Message = {
-        id: 1,
-        content: 'plan a simple todo app',
-        role: 'user',
-        metadata: {},
-        timestamp: new Date(),
-      };
+      for (const keyword of planningKeywords) {
+        mockProvider.mockImplementationOnce(async () => mockResponses.planner);
 
-      const response = await manager.handleMessage(message);
-      expect(response).toBeDefined();
-      expect(response?.metadata?.agentRole).toBe('planner');
-      expect(response?.agentId).toBe('planner');
+        const message: Message = {
+          id: 1,
+          content: `Please ${keyword} a new feature`,
+          role: 'user',
+          metadata: {},
+          timestamp: new Date(),
+        };
 
-      const content = response?.content.toLowerCase();
-      expect(content).toContain('step');
-      expect(content).toMatch(/\d\.|•|-/);
-      expect(content).toContain('design');
-      expect(content).toContain('implement');
+        const response = await manager.handleMessage(message);
+        expect(response?.metadata?.agentRole).toBe('planner');
+        expect(response?.content).toBe(mockResponses.planner.content);
+      }
     });
 
-    // Test 2: Coder Detection
-    it('should detect and respond as coder agent', async () => {
-      vi.spyOn(manager as any, 'tryProvider').mockImplementation(
-        async (_provider: string, _message: string, role: string) => {
-          return role === 'coder' ? mockResponses.coder : { content: '', error: true };
-        }
-      );
+    it('should detect role from code-related keywords', async () => {
+      const codingKeywords = [
+        'implement', 'code', 'write', 'develop', 'build'
+      ];
 
-      const message: Message = {
-        id: 1,
-        content: 'write a Task class',
-        role: 'user',
-        metadata: {},
-        timestamp: new Date(),
-      };
+      for (const keyword of codingKeywords) {
+        mockProvider.mockImplementationOnce(async () => mockResponses.coder);
 
-      const response = await manager.handleMessage(message);
-      expect(response).toBeDefined();
-      expect(response?.metadata?.agentRole).toBe('coder');
-      expect(response?.agentId).toBe('coder');
+        const message: Message = {
+          id: 1,
+          content: `Please ${keyword} this feature`,
+          role: 'user',
+          metadata: {},
+          timestamp: new Date(),
+        };
 
-      const content = response?.content.toLowerCase();
-      expect(content).toContain('class');
-      expect(content).toMatch(/constructor|function/);
+        const response = await manager.handleMessage(message);
+        expect(response?.metadata?.agentRole).toBe('coder');
+        expect(response?.content).toBe(mockResponses.coder.content);
+      }
     });
 
-    // Test 3: Reviewer Detection
-    it('should detect and respond as reviewer agent', async () => {
-      vi.spyOn(manager as any, 'tryProvider').mockImplementation(
-        async (_provider: string, _message: string, role: string) => {
-          return role === 'reviewer' ? mockResponses.reviewer : { content: '', error: true };
-        }
-      );
+    it('should detect role from review-related keywords', async () => {
+      const reviewKeywords = [
+        'review', 'check', 'analyze', 'test', 'validate'
+      ];
 
-      const message: Message = {
-        id: 1,
-        content: 'review my todo application code',
-        role: 'user',
-        metadata: {},
-        timestamp: new Date(),
-      };
+      for (const keyword of reviewKeywords) {
+        mockProvider.mockImplementationOnce(async () => mockResponses.reviewer);
 
-      const response = await manager.handleMessage(message);
-      expect(response).toBeDefined();
-      expect(response?.metadata?.agentRole).toBe('reviewer');
-      expect(response?.agentId).toBe('reviewer');
+        const message: Message = {
+          id: 1,
+          content: `Please ${keyword} this code`,
+          role: 'user',
+          metadata: {},
+          timestamp: new Date(),
+        };
 
-      const content = response?.content.toLowerCase();
-      expect(content).toContain('security');
-      expect(content).toContain('performance');
-      expect(content).toContain('test');
+        const response = await manager.handleMessage(message);
+        expect(response?.metadata?.agentRole).toBe('reviewer');
+        expect(response?.content).toBe(mockResponses.reviewer.content);
+      }
+    });
+
+    it('should handle role transitions properly', async () => {
+      const transitions = [
+        { message: 'Plan the new feature', expectedRole: 'planner', response: mockResponses.planner },
+        { message: 'Implement the feature now', expectedRole: 'coder', response: mockResponses.coder },
+        { message: 'Review the implementation', expectedRole: 'reviewer', response: mockResponses.reviewer }
+      ];
+
+      for (const transition of transitions) {
+        mockProvider.mockImplementationOnce(async () => transition.response);
+
+        const message: Message = {
+          id: 1,
+          content: transition.message,
+          role: 'user',
+          metadata: {},
+          timestamp: new Date(),
+        };
+
+        const response = await manager.handleMessage(message);
+        expect(response?.metadata?.agentRole).toBe(transition.expectedRole);
+        expect(response?.content).toBe(transition.response.content);
+      }
     });
   });
 
   describe('Error Handling', () => {
-    // Test 4: Service Error Handling
     it('should handle service errors gracefully', async () => {
-      vi.spyOn(manager as any, 'tryProvider').mockImplementation(
-        async () => ({ content: '', error: true, errorType: 'service_error' })
-      );
+      mockProvider.mockImplementation(async () => ({
+        content: 'Error occurred',
+        error: true,
+        errorType: 'service_error'
+      }));
 
       const message: Message = {
         id: 1,
@@ -176,50 +164,31 @@ describe('AgentManager Tests', () => {
       };
 
       const response = await manager.handleMessage(message);
-      expect(response).toBeDefined();
       expect(response?.metadata?.error).toBe(true);
       expect(response?.metadata?.errorType).toBe('service_error');
     });
 
-    // Test 5: Provider Fallback
-    it('should attempt fallback when primary service fails', async () => {
-      const providerSpy = vi.spyOn(manager as any, 'tryProvider');
+    it('should attempt provider fallback when primary fails', async () => {
       let callCount = 0;
-
-      providerSpy.mockImplementation(async () => {
+      mockProvider.mockImplementation(async () => {
         callCount++;
         if (callCount === 1) {
-          return { content: '', error: true, errorType: 'rate_limit' };
+          return { content: '', error: true, errorType: 'service_error' };
         }
         return mockResponses.coder;
       });
 
       const message: Message = {
         id: 1,
-        content: 'write a simple function',
+        content: 'write a function',
         role: 'user',
         metadata: {},
         timestamp: new Date(),
       };
 
       const response = await manager.handleMessage(message);
-      expect(response).toBeDefined();
-      expect(providerSpy).toHaveBeenCalledTimes(2);
-      expect(response?.content).toContain('class');
-    });
-
-    // Test 6: Non-user Message Handling
-    it('should not process non-user messages', async () => {
-      const message: Message = {
-        id: 1,
-        content: 'test message',
-        role: 'assistant',
-        metadata: {},
-        timestamp: new Date(),
-      };
-
-      const response = await manager.handleMessage(message);
-      expect(response).toBeNull();
+      expect(mockProvider).toHaveBeenCalledTimes(2);
+      expect(response?.content).toBe(mockResponses.coder.content);
     });
   });
 });

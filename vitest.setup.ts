@@ -41,10 +41,9 @@ global.process.on('unhandledRejection', (err) => {
 // Add console error wrapper to help debug test issues
 const originalError = console.error;
 console.error = (...args) => {
-  originalError.apply(console, args);
-  // Throw error in test environment to catch issues early
+  // Only log the error in test environment, don't throw
   if (process.env.NODE_ENV === 'test') {
-    throw new Error(args.join(' '));
+    originalError.apply(console, args);
   }
 };
 

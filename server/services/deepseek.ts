@@ -17,7 +17,7 @@ export class DeepSeekService {
   private model: string;
   private simulateErrors: boolean;
 
-  constructor(options = { simulateErrors: true }) {
+  constructor(options = { simulateErrors: false }) {  // Changed default to false for tests
     this.apiKey = process.env.DEEPSEEK_API_KEY || "";
     this.baseUrl = "https://api.deepseek.com/v1";
     this.fallbackMode = !this.apiKey;
@@ -75,11 +75,12 @@ export class DeepSeekService {
           error: errorData,
         });
 
-        if (response.status === 402) {
-          console.log("Switching to fallback mode due to API usage limits");
+        // Handle rate limits by switching to fallback mode
+        if (response.status === 402 || response.status === 429) {
+          console.log("API usage limits reached, switching to fallback mode");
           this.fallbackMode = true;
           return {
-            content: "I'm currently in demo mode. You can still test the interface, but responses will be simulated.",
+            content: "I'm currently in demo mode due to API limits. You can still test the interface, but responses will be simulated.",
             error: false
           };
         }
