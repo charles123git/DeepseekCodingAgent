@@ -101,8 +101,10 @@ app.use((req, res, next) => {
 
   // Setup Vite or static file serving
   if (process.env.NODE_ENV === 'development') {
+    log('Starting in development mode with Vite middleware');
     await setupVite(app, server);
   } else {
+    log('Starting in production mode with static file serving');
     serveStatic(app);
   }
 
@@ -115,7 +117,7 @@ app.use((req, res, next) => {
   });
 
   const PORT = process.env.PORT || 5000;
-  server.listen(PORT, '0.0.0.0', () => {
-    log(`Server running on port ${PORT}`);
+  server.listen(PORT, () => {
+    log(`Server running on port ${PORT} in ${process.env.NODE_ENV || 'production'} mode`);
   });
 })();
