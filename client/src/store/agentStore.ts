@@ -70,25 +70,24 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     });
 
     // Set up message handler
-    wsManager.onmessage = (event) => {
+    wsManager.on('message', (data) => {
       try {
-        const message = JSON.parse(event.data);
-        get().addMessage(message);
+        get().addMessage(data);
         log("Processed incoming message", { 
           level: 'debug',
-          context: { messageType: message.type }
+          context: { messageType: data.type }
         });
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         log("Error handling WebSocket message", { 
           level: 'error',
-          context: { error: error.message || 'Unknown error' }
+          context: { error: errorMessage }
         });
       }
-    };
+    });
 
     // Monitor connection state changes
-    const updateConnectionState = () => {
-      const state = wsManager.getState();
+    wsManager.on('stateChange', (state) => {
       set({ 
         isConnected: state === 'connected',
         connectionState: state
@@ -98,9 +97,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         level: 'info',
         context: { state }
       });
-    };
-
-    wsManager.onStateChange = updateConnectionState;
+    });
 
     set({ wsManager });
   },
@@ -137,9 +134,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         context: { messageContent: content }
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       log("Error sending message", { 
         level: 'error',
-        context: { error: error.message || 'Unknown error' }
+        context: { error: errorMessage }
       });
       onError("Connection issue. Please try again in a moment.");
     }

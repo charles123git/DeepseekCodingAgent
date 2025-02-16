@@ -1,4 +1,5 @@
 import { log, CircuitBreaker } from "@/lib/utils";
+import { EventEmitter } from "events";
 
 interface WebSocketConfig {
   maxRetries?: number;
@@ -16,7 +17,7 @@ const DEFAULT_CONFIG: Required<WebSocketConfig> = {
   connectionTimeout: 5000,
 };
 
-export class WebSocketManager {
+export class WebSocketManager extends EventEmitter {
   private socket: WebSocket | null = null;
   private retryCount = 0;
   private retryDelay: number;
@@ -29,6 +30,7 @@ export class WebSocketManager {
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
 
   constructor(config: WebSocketConfig = {}) {
+    super();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.retryDelay = this.config.initialRetryDelay;
     this.circuitBreaker = new CircuitBreaker();
@@ -62,6 +64,7 @@ export class WebSocketManager {
       this.setupConnectionHandlers();
       this.setupConnectionTimeout();
       this.setupHealthCheck();
+      this.emitStateChange();
     } catch (error) {
       this.handleConnectionError(error);
     }
@@ -77,6 +80,7 @@ export class WebSocketManager {
       this.retryCount = 0;
       this.retryDelay = this.config.initialRetryDelay;
       this.flushMessageQueue();
+      this.emitStateChange();
     };
 
     this.socket.onclose = (event) => {
@@ -92,7 +96,6 @@ export class WebSocketManager {
         this.lastPongTime = Date.now();
         return;
       }
-      // Handle regular messages
       this.handleMessage(event);
     };
   }
@@ -127,6 +130,7 @@ export class WebSocketManager {
       level: 'info',
       context: { code: event.code, reason: event.reason }
     });
+    this.emitStateChange();
 
     // Don't reconnect if it was a normal closure
     if (event.code !== 1000) {
@@ -134,13 +138,15 @@ export class WebSocketManager {
     }
   }
 
-  private handleConnectionError(error: any): void {
+  private handleConnectionError(error: unknown): void {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     log("WebSocket error occurred", { 
       level: 'error',
-      context: { error: error.message || 'Unknown error' }
+      context: { error: errorMessage }
     });
     this.circuitBreaker.recordFailure();
     this.connectionState = 'disconnected';
+    this.emitStateChange();
   }
 
   private handleReconnection(): void {
@@ -167,14 +173,19 @@ export class WebSocketManager {
   private handleMessage(event: MessageEvent): void {
     try {
       const data = JSON.parse(event.data);
-      // Emit message to subscribers here
+      this.emit('message', data);
       log("Received message", { level: 'debug', context: { data } });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       log("Error parsing WebSocket message", { 
         level: 'error',
-        context: { error: error.message || 'Unknown error' }
+        context: { error: errorMessage }
       });
     }
+  }
+
+  private emitStateChange(): void {
+    this.emit('stateChange', this.connectionState);
   }
 
   send(message: string): void {
@@ -213,6 +224,8 @@ export class WebSocketManager {
       this.healthCheckInterval = null;
     }
     this.connectionState = 'disconnected';
+    this.emitStateChange();
+    this.removeAllListeners();
   }
 
   getState(): string {
@@ -221,7 +234,7 @@ export class WebSocketManager {
 }
 
 // Export a factory function for creating WebSocket instances
-export function createWebSocket(config?: WebSocketConfig) {
+export function createWebSocket(config?: WebSocketConfig): WebSocketManager {
   const manager = new WebSocketManager(config);
   manager.connect();
   return manager;

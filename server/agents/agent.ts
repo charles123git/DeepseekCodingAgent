@@ -34,13 +34,25 @@ export class AgentManager {
 
     try {
       const service = provider === "together" ? this.together : this.deepseek;
-      return await service.generateResponse(fullPrompt);
+      const response = await service.generateResponse(fullPrompt);
+
+      if (response.error) {
+        return {
+          content: "",
+          error: true,
+          errorType: 'service_error'
+        };
+      }
+
+      return response;
     } catch (error) {
       console.error(`Error with ${provider}:`, error);
+      const errorType = this.getErrorType(error);
+
       return {
         content: "",
         error: true,
-        errorType: this.getErrorType(error)
+        errorType
       };
     }
   }
@@ -53,18 +65,29 @@ export class AgentManager {
   }
 
   private determineAgentRole(message: string): AgentRole {
-    // Simple role determination based on message content
-    if (message.toLowerCase().includes('review') || 
-        message.toLowerCase().includes('check') ||
-        message.toLowerCase().includes('analyze')) {
+    // Enhanced role determination based on message content
+    const lowerMessage = message.toLowerCase();
+
+    // Review related tasks
+    if (lowerMessage.includes('review') || 
+        lowerMessage.includes('check') ||
+        lowerMessage.includes('analyze') ||
+        lowerMessage.includes('test') ||
+        lowerMessage.includes('validate')) {
       return 'reviewer';
     }
-    if (message.toLowerCase().includes('plan') || 
-        message.toLowerCase().includes('design') ||
-        message.toLowerCase().includes('architecture')) {
+
+    // Planning related tasks
+    if (lowerMessage.includes('plan') || 
+        lowerMessage.includes('design') ||
+        lowerMessage.includes('architect') ||
+        lowerMessage.includes('structure') ||
+        lowerMessage.includes('organize')) {
       return 'planner';
     }
-    return 'coder'; // Default to coder for code generation
+
+    // Default to coder for implementation tasks
+    return 'coder';
   }
 
   private async tryGenerateResponse(message: string, role: AgentRole): Promise<ProviderResponse> {
@@ -77,25 +100,20 @@ export class AgentManager {
       const response = await this.tryProvider(currentProvider, message, role);
 
       if (!response.error) {
+        this.currentProvider = currentProvider; // Update successful provider
         return response;
-      }
-
-      if (response.errorType === 'service_error' || 
-          this.fallbackAttempts === this.MAX_FALLBACK_ATTEMPTS - 1) {
-        return {
-          content: "I'm currently experiencing technical difficulties. Please try again in a moment.",
-          error: true,
-          errorType: 'service_error'
-        };
       }
 
       // Switch provider and increment attempt counter
       currentProvider = currentProvider === "together" ? "deepseek" : "together";
       this.fallbackAttempts++;
+
+      // Add delay before retry to prevent overwhelming the services
+      await new Promise(resolve => setTimeout(resolve, 1000 * this.fallbackAttempts));
     }
 
     return {
-      content: "All available providers are currently unavailable. Please try again later.",
+      content: "All available providers are currently experiencing issues. Please try again later.",
       error: true,
       errorType: 'service_error'
     };
