@@ -54,9 +54,9 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full bg-background">
+    <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full bg-background/95">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        <div className="space-y-4 max-w-4xl mx-auto">
+        <div className="space-y-6 max-w-4xl mx-auto">
           {hasInsufficientBalance && (
             <div className="px-4 py-3 mb-4 text-sm bg-background/50 border border-border/50 rounded-lg">
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -89,15 +89,15 @@ export function ChatInterface() {
           ))}
         </div>
       </ScrollArea>
-      <form onSubmit={handleSubmit} className="p-4 border-t border-border/50 bg-background/50 backdrop-blur-sm">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-border/50 bg-background/95 backdrop-blur-sm">
         <div className="flex gap-2 max-w-4xl mx-auto">
           <Input
             ref={inputRef}
             placeholder={hasInsufficientBalance ? "Service temporarily unavailable" : "Type your message..."}
             className="flex-1 bg-background/50"
           />
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             variant={hasInsufficientBalance ? "outline" : "default"}
             className={hasInsufficientBalance ? "text-muted-foreground" : ""}
           >
