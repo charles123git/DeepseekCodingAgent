@@ -1,4 +1,4 @@
-import { Message, InsertMessage } from "@shared/schema";
+import { Message, InsertMessage, Service } from "@shared/schema";
 import { IStorage } from "../storage";
 import { DeepSeekService } from "../services/deepseek";
 import { TogetherService } from "../services/together";
@@ -8,11 +8,26 @@ export class AgentManager {
   private together: TogetherService;
   private deepseek: DeepSeekService;
   private currentProvider: "together" | "deepseek" = "together";
+  private services: Map<string, Service> = new Map();
 
   constructor(storage: IStorage) {
     this.storage = storage;
     this.together = new TogetherService();
     this.deepseek = new DeepSeekService();
+  }
+
+  async initializeServices() {
+    try {
+      const services = await this.storage.getAllServices();
+      services.forEach(service => {
+        this.services.set(service.provider, service);
+        if (service.isEnabled && service.status === 'active') {
+          this.currentProvider = service.provider as "together" | "deepseek";
+        }
+      });
+    } catch (error) {
+      console.error("Error initializing services:", error);
+    }
   }
 
   private async tryGenerateResponse(message: string): Promise<{ content: string; error?: boolean }> {
@@ -43,10 +58,33 @@ export class AgentManager {
     }
   }
 
+  private async updateServiceHealth(serviceId: string, hadError: boolean) {
+    const service = this.services.get(serviceId);
+    if (service) {
+      try {
+        await this.storage.updateService({
+          ...service,
+          errorCount: hadError ? service.errorCount + 1 : 0,
+          healthCheck: new Date(),
+          status: hadError ? (service.errorCount >= 5 ? 'degraded' : 'active') : 'active'
+        });
+      } catch (error) {
+        console.error("Error updating service health:", error);
+      }
+    }
+  }
+
   async handleMessage(message: Message): Promise<InsertMessage | null> {
     if (message.role === "user") {
       try {
         const response = await this.tryGenerateResponse(message.content);
+
+        // Update service health metrics
+        await this.updateServiceHealth(
+          this.currentProvider,
+          response.error || false
+        );
+
         return {
           content: response.content || "No response generated",
           role: "assistant",
