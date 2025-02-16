@@ -8,7 +8,7 @@ import { Send, AlertCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
-import type { Message, WebSocketMessage } from "@shared/schema";
+import type { Message } from "@shared/schema";
 import cn from 'classnames';
 
 export function ChatInterface() {
@@ -48,16 +48,17 @@ export function ChatInterface() {
     inputRef.current.value = "";
 
     try {
-      const message: WebSocketMessage = {
+      const message = {
         content,
         role: "user",
         metadata: {},
         timestamp: new Date(),
-        agentId: null,
-        serviceId: null
       };
 
+      // First, send the message through WebSocket
       await sendWebSocketMessage(message);
+
+      // Then send through regular HTTP for redundancy
       await sendMessage(content, (errorMessage) => {
         toast({
           title: "Error",
@@ -66,6 +67,7 @@ export function ChatInterface() {
         });
       });
     } catch (error) {
+      console.error('Error sending message:', error);
       toast({
         title: "Error",
         description: "Failed to send message. Please try again.",
