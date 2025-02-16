@@ -1,19 +1,35 @@
+import { z } from "zod";
+
+const deepseekResponseSchema = z.object({
+  choices: z.array(
+    z.object({
+      message: z.object({
+        content: z.string(),
+      }),
+    })
+  ),
+});
+
 export class DeepSeekService {
   private apiKey: string;
   private baseUrl: string;
   private fallbackMode: boolean;
+  private model: string;
+  private simulateErrors: boolean;
 
-  constructor() {
+  constructor(options = { simulateErrors: true }) {
     this.apiKey = process.env.DEEPSEEK_API_KEY || "";
     this.baseUrl = "https://api.deepseek.com/v1";
     this.fallbackMode = !this.apiKey;
+    this.model = "deepseek-coder";
+    this.simulateErrors = options.simulateErrors;
 
     if (!this.apiKey) {
       console.warn("DeepSeek API key is not set. Using fallback mode for testing.");
     }
   }
 
-  async generateResponse(prompt: string): Promise<{ content: string; error?: boolean }> {
+  async generateResponse(prompt: string): Promise<{ content: string; error: boolean }> {
     if (this.fallbackMode) {
       return {
         content: "This is a test response. The assistant is currently in demo mode.",
@@ -22,6 +38,15 @@ export class DeepSeekService {
     }
 
     try {
+      // Simulate errors only when enabled and not in fallback mode
+      if (this.simulateErrors && Math.random() < 0.3) {  // 30% chance of failure
+        console.log("Simulating DeepSeek failure to test fallback");
+        return {
+          content: "Service temporarily unavailable",
+          error: true
+        };
+      }
+
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -29,7 +54,7 @@ export class DeepSeekService {
           Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify({
-          model: "deepseek-coder",
+          model: this.model,
           messages: [
             {
               role: "system",
@@ -37,7 +62,7 @@ export class DeepSeekService {
             },
             { role: "user", content: prompt }
           ],
-          temperature: 0.7,
+          temperature: 0.3,
           max_tokens: 1000,
         }),
       });
@@ -61,18 +86,31 @@ export class DeepSeekService {
 
         return {
           content: "I encountered an issue processing your request. Let me switch to demo mode for now.",
-          error: false
+          error: true
         };
       }
 
       const data = await response.json();
-      return { content: data.choices[0].message.content };
+      const parsed = deepseekResponseSchema.safeParse(data);
+
+      if (!parsed.success) {
+        console.error("Invalid API response format:", parsed.error);
+        return {
+          content: "Received an invalid response format. Switching to demo mode.",
+          error: true
+        };
+      }
+
+      return { 
+        content: parsed.data.choices[0].message.content,
+        error: false
+      };
     } catch (error) {
       console.error("DeepSeek service error:", error);
       this.fallbackMode = true;
       return {
-        content: "I'm having trouble connecting to the service. I'll switch to demo mode for now so we can continue testing.",
-        error: false
+        content: "I'm having trouble connecting to the service. I'll switch to demo mode for now.",
+        error: true
       };
     }
   }
