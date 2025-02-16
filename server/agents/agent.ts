@@ -161,7 +161,7 @@ export class AgentManager {
 
       const response = await this.tryProvider(currentProvider, message, role);
 
-      if (!response.error) {
+      if (!response.error && response.content) {
         this.currentProvider = currentProvider;
         return response;
       }
