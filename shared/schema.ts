@@ -41,6 +41,7 @@ const messageBaseSchema = z.object({
   metadata: z.record(z.unknown()).default({}),
   agentId: z.string().optional(),
   serviceId: z.string().optional(),
+  timestamp: z.string().datetime().optional(), // Changed to accept ISO string timestamps
 });
 
 // Capability schema for agents
