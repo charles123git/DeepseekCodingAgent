@@ -15,12 +15,15 @@ export class AgentManager {
     this.deepseek = new DeepSeekService();
   }
 
-  private async tryGenerateResponse(message: string): Promise<{ content: string; error?: boolean }> {
+  private async tryGenerateResponse(message: string): Promise<{ content: string; error: boolean }> {
     try {
+      console.log("Attempting to generate response using:", this.currentProvider);
+
       const response = await this.together.generateResponse(message);
       if (!response.error) {
         return response;
       }
+
       console.log("Together.ai failed, falling back to DeepSeek");
       this.currentProvider = "deepseek";
       return await this.deepseek.generateResponse(message);
@@ -36,15 +39,22 @@ export class AgentManager {
   async handleMessage(message: Message): Promise<InsertMessage | null> {
     if (message.role === "user") {
       try {
+        const startTime = Date.now();
+        console.log("Processing user message:", message.content);
+
         const response = await this.tryGenerateResponse(message.content);
+        const duration = Date.now() - startTime;
+        console.log(`Generated response in ${duration}ms`);
+
         return {
           content: response.content || "No response generated",
           role: "assistant",
           metadata: {
-            model: this.currentProvider === "together" ? "starcoderplus" : "deepseek-coder",
+            model: this.currentProvider === "together" ? "mistralai/Mixtral-8x7B-Instruct-v0.1" : "deepseek-coder",
             timestamp: new Date().toISOString(),
             error: response.error || false,
-            provider: this.currentProvider
+            provider: this.currentProvider,
+            duration
           },
           agentId: this.currentProvider,
         };

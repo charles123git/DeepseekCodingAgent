@@ -20,7 +20,8 @@ export class TogetherService {
     this.apiKey = process.env.TOGETHER_API_KEY || "";
     this.baseUrl = "https://api.together.xyz/v1";
     this.fallbackMode = !this.apiKey;
-    this.model = "togethercomputer/CodeLlama-34b-Instruct";
+    // Using a serverless-compatible model
+    this.model = "mistralai/Mixtral-8x7B-Instruct-v0.1";
 
     if (!this.apiKey) {
       console.warn("Together API key is not set. Using fallback mode for testing.");
@@ -36,6 +37,8 @@ export class TogetherService {
     }
 
     try {
+      console.log("Sending request to Together API with model:", this.model);
+
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -51,8 +54,8 @@ export class TogetherService {
             },
             { role: "user", content: prompt }
           ],
-          temperature: 0.7,
-          max_tokens: 1024
+          temperature: 0.3,
+          max_tokens: 1024,
         }),
       });
 
@@ -62,6 +65,7 @@ export class TogetherService {
           status: response.status,
           statusText: response.statusText,
           error: errorData,
+          model: this.model,
         });
 
         if (response.status === 402 || response.status === 429) {
@@ -80,6 +84,8 @@ export class TogetherService {
       }
 
       const data = await response.json();
+      console.log("Together API response:", data);
+
       const parsed = togetherResponseSchema.safeParse(data);
 
       if (!parsed.success) {
