@@ -97,6 +97,42 @@ export class AgentManager {
     return 'coder';
   }
 
+  private async tryGenerateResponse(message: string, role: AgentRole): Promise<ProviderResponse> {
+    this.fallbackAttempts = 0;
+    let currentProvider = this.currentProvider;
+
+    log(`Starting response generation with provider: ${currentProvider}`);
+
+    while (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
+      log(`Attempt ${this.fallbackAttempts + 1} using ${currentProvider}`);
+
+      const response = await this.tryProvider(currentProvider, message, role);
+      log(`Provider response: ${JSON.stringify(response)}`);
+
+      if (!response.error && response.content) {
+        log(`Successfully got response from ${currentProvider}`);
+        this.currentProvider = currentProvider;
+        return response;
+      }
+
+      log(`Provider ${currentProvider} failed, trying fallback`);
+      currentProvider = currentProvider === "together" ? "deepseek" : "together";
+      this.fallbackAttempts++;
+
+      if (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
+        log(`Switching to fallback provider: ${currentProvider}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * this.fallbackAttempts));
+      }
+    }
+
+    log("All provider attempts exhausted");
+    return {
+      content: "All available providers are currently experiencing issues. Please try again later.",
+      error: true,
+      errorType: 'service_error'
+    };
+  }
+
   async handleMessage(message: Message): Promise<InsertMessage | null> {
     if (message.role === "user") {
       try {
@@ -107,20 +143,33 @@ export class AgentManager {
         const response = await this.tryGenerateResponse(message.content, role);
         const duration = Date.now() - startTime;
 
+        log(`Generated response: ${JSON.stringify(response)}`);
+
         if (response.error) {
           log(`Failed to generate response: ${response.errorType}`);
-        } else {
-          log(`Successfully generated response in ${duration}ms`);
+          return {
+            content: "I apologize, but I encountered an error while processing your request. Please try again.",
+            role: "assistant",
+            metadata: {
+              error: true,
+              errorType: response.errorType,
+              timestamp: new Date().toISOString(),
+              provider: this.currentProvider
+            },
+            timestamp: new Date(),
+            agentId: 'system',
+            serviceId: 'error',
+          };
         }
 
+        log(`Successfully generated response in ${duration}ms`);
         return {
-          content: response.content || "I apologize, but I encountered an error while processing your request. Please try again.",
+          content: response.content,
           role: "assistant",
           metadata: {
             model: this.currentProvider === "together" ? "mistralai/Mixtral-8x7B-Instruct-v0.1" : "deepseek-coder",
             timestamp: new Date().toISOString(),
-            error: response.error,
-            errorType: response.errorType,
+            error: false,
             provider: this.currentProvider,
             duration,
             agentRole: role
@@ -148,38 +197,5 @@ export class AgentManager {
       }
     }
     return null;
-  }
-
-  private async tryGenerateResponse(message: string, role: AgentRole): Promise<ProviderResponse> {
-    this.fallbackAttempts = 0;
-    let currentProvider = this.currentProvider;
-
-    log(`Starting response generation with provider: ${currentProvider}`);
-
-    while (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
-      log(`Attempt ${this.fallbackAttempts + 1} using ${currentProvider}`);
-
-      const response = await this.tryProvider(currentProvider, message, role);
-
-      if (!response.error && response.content) {
-        this.currentProvider = currentProvider;
-        return response;
-      }
-
-      currentProvider = currentProvider === "together" ? "deepseek" : "together";
-      this.fallbackAttempts++;
-
-      if (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
-        log(`Switching to fallback provider: ${currentProvider}`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * this.fallbackAttempts));
-      }
-    }
-
-    log("All provider attempts exhausted");
-    return {
-      content: "All available providers are currently experiencing issues. Please try again later.",
-      error: true,
-      errorType: 'service_error'
-    };
   }
 }

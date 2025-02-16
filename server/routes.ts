@@ -23,24 +23,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/messages", async (req, res) => {
-    const parsed = insertMessageSchema.safeParse({
-      ...req.body,
-      timestamp: new Date(req.body.timestamp)
-    });
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error });
-      return;
+    try {
+      log(`Received POST /api/messages with body: ${JSON.stringify(req.body)}`);
+      const parsed = insertMessageSchema.safeParse({
+        ...req.body,
+        timestamp: new Date(req.body.timestamp)
+      });
+      if (!parsed.success) {
+        log(`Invalid message format: ${JSON.stringify(parsed.error)}`);
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+      const message = await storage.addMessage(parsed.data);
+      log(`Saved user message: ${JSON.stringify(message)}`);
+
+      const response = await agentManager.handleMessage(message);
+      log(`Agent response: ${JSON.stringify(response)}`);
+
+      if (response) {
+        const savedResponse = await storage.addMessage(response);
+        log(`Saved AI response: ${JSON.stringify(savedResponse)}`);
+        // Ensure both HTTP and WebSocket clients get the response
+        io.emit("message", savedResponse);
+        res.json([message, savedResponse]);
+        return;
+      }
+      res.json([message]);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`Error in POST /api/messages: ${errorMessage}`);
+      res.status(500).json({ error: "Internal server error" });
     }
-    const message = await storage.addMessage(parsed.data);
-    const response = await agentManager.handleMessage(message);
-    if (response) {
-      const savedResponse = await storage.addMessage(response);
-      // Ensure both HTTP and WebSocket clients get the response
-      io.emit("message", savedResponse);
-      res.json([message, savedResponse]);
-      return;
-    }
-    res.json([message]);
   });
 
   io.on("connection", (socket) => {
@@ -48,7 +61,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     socket.on("message", async (data) => {
       try {
-        log(`Received message: ${JSON.stringify(data)}`);
+        log(`Received WebSocket message: ${JSON.stringify(data)}`);
 
         const parsed = insertMessageSchema.safeParse({
           ...data,
@@ -57,7 +70,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         if (!parsed.success) {
-          log(`Invalid message format: ${JSON.stringify(parsed.error)}`);
+          log(`Invalid WebSocket message format: ${JSON.stringify(parsed.error)}`);
           socket.emit("message", {
             content: "Invalid message format",
             role: "system",
@@ -71,19 +84,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const savedMessage = await storage.addMessage(parsed.data);
+        log(`Saved WebSocket user message: ${JSON.stringify(savedMessage)}`);
+
         // Emit user message to all clients
         io.emit("message", savedMessage);
 
         const response = await agentManager.handleMessage(savedMessage);
+        log(`WebSocket agent response: ${JSON.stringify(response)}`);
+
         if (response) {
           const savedResponse = await storage.addMessage(response);
-          log(`Sending AI response: ${JSON.stringify(savedResponse)}`);
+          log(`Saved WebSocket AI response: ${JSON.stringify(savedResponse)}`);
           // Emit AI response to all clients
           io.emit("message", savedResponse);
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        log(`Socket.IO error: ${errorMessage}`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        log(`WebSocket error: ${errorMessage}`);
         socket.emit("message", {
           content: "An error occurred while processing your message",
           role: "system",
