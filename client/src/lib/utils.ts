@@ -1,39 +1,52 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import winston from 'winston';
 
-const logger = winston.createLogger({
-  level: import.meta.env.PROD ? 'info' : 'debug',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json(),
-    winston.format.colorize(),
-    winston.format.printf(({ timestamp, level, message, ...meta }) => {
-      return `${timestamp} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ''}`;
-    })
-  ),
-  transports: [
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      )
-    })
-  ]
-});
+// Simple browser-compatible logger
+const logLevels = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3
+} as const;
+
+type LogLevel = keyof typeof logLevels;
+
+const getLogPrefix = (level: LogLevel) => {
+  const timestamp = new Date().toISOString();
+  return `${timestamp} [${level.toUpperCase()}]`;
+};
+
+const shouldLog = (messageLevel: LogLevel) => {
+  const currentLevel = import.meta.env.PROD ? logLevels.info : logLevels.debug;
+  return logLevels[messageLevel] >= currentLevel;
+};
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const log = (message: string, options: { level?: string; context?: Record<string, unknown> } = {}) => {
+export const log = (message: string, options: { level?: LogLevel; context?: Record<string, unknown> } = {}) => {
   const { level = 'info', context = {} } = options;
 
-  logger.log({
-    level,
-    message,
-    ...context
-  });
+  if (!shouldLog(level)) return;
+
+  const prefix = getLogPrefix(level);
+  const contextStr = Object.keys(context).length ? JSON.stringify(context) : '';
+  const logMessage = `${prefix}: ${message} ${contextStr}`;
+
+  switch (level) {
+    case 'error':
+      console.error(logMessage);
+      break;
+    case 'warn':
+      console.warn(logMessage);
+      break;
+    case 'debug':
+      console.debug(logMessage);
+      break;
+    default:
+      console.log(logMessage);
+  }
 };
 
 // Circuit breaker implementation for handling service failures

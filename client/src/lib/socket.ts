@@ -32,6 +32,7 @@ export class SocketManager extends EventEmitter {
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
   private isCleanedUp: boolean = false;
   private healthCheckInterval: NodeJS.Timeout | null = null;
+  private reconnectAttempts: number = 0;
 
   constructor(config: SocketConfig = {}) {
     super();
@@ -61,14 +62,21 @@ export class SocketManager extends EventEmitter {
       this.connectionState = 'connecting';
       const socketUrl = import.meta.env.PROD 
         ? window.location.origin
-        : `${window.location.protocol}//${window.location.host}`;
+        : `${window.location.protocol}//${window.location.hostname}:5000`;
+
+      log("Initializing WebSocket connection", { 
+        level: 'info',
+        context: { url: socketUrl }
+      });
 
       this.socket = io(socketUrl, {
         path: "/ws",
         reconnectionAttempts: this.config.maxRetries,
         reconnectionDelay: this.config.initialRetryDelay,
         timeout: this.config.connectionTimeout,
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        forceNew: true,
+        autoConnect: true
       });
 
       this.setupEventHandlers();
@@ -108,6 +116,7 @@ export class SocketManager extends EventEmitter {
         return;
       }
 
+      this.reconnectAttempts = 0;
       log("Socket.IO connection established", { level: 'info' });
       this.connectionState = 'connected';
       this.emitStateChange();
@@ -120,10 +129,25 @@ export class SocketManager extends EventEmitter {
       });
       this.connectionState = 'disconnected';
       this.emitStateChange();
+
+      // Handle reconnection for specific disconnect reasons
+      if (reason === 'io server disconnect') {
+        // Server initiated disconnect, retry connection
+        this.socket?.connect();
+      }
     });
 
     this.socket.on('connect_error', (error) => {
+      this.reconnectAttempts++;
       this.handleConnectionError(error);
+
+      if (this.reconnectAttempts >= this.config.maxRetries) {
+        log("Max reconnection attempts reached", {
+          level: 'error',
+          context: { attempts: this.reconnectAttempts }
+        });
+        this.cleanup(true);
+      }
     });
 
     this.socket.on('error', (error) => {
@@ -158,7 +182,10 @@ export class SocketManager extends EventEmitter {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     log("Socket.IO error occurred", { 
       level: 'error',
-      context: { error: errorMessage }
+      context: { 
+        error: errorMessage,
+        attempts: this.reconnectAttempts
+      }
     });
     this.connectionState = 'disconnected';
     this.emitStateChange();
@@ -169,29 +196,29 @@ export class SocketManager extends EventEmitter {
   }
 
   send(message: string): void {
-    if (this.socket?.connected) {
-      try {
-        const data = JSON.parse(message);
-        const validatedMessage = MessageSchema.parse(data);
-        this.socket.emit('message', validatedMessage);
-        log("Message sent successfully", { 
-          level: 'debug',
-          context: { messageType: validatedMessage.role }
-        });
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        log("Message validation failed", {
-          level: 'error',
-          context: { error: errorMessage }
-        });
-        throw new Error(`Invalid message format: ${errorMessage}`);
-      }
-    } else {
+    if (!this.socket?.connected) {
       log("Message not sent - connection not ready", { 
         level: 'warn',
         context: { connectionState: this.connectionState }
       });
       throw new Error("Socket not connected");
+    }
+
+    try {
+      const data = JSON.parse(message);
+      const validatedMessage = MessageSchema.parse(data);
+      this.socket.emit('message', validatedMessage);
+      log("Message sent successfully", { 
+        level: 'debug',
+        context: { messageType: validatedMessage.role }
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      log("Message validation failed", {
+        level: 'error',
+        context: { error: errorMessage }
+      });
+      throw new Error(`Invalid message format: ${errorMessage}`);
     }
   }
 

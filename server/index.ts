@@ -55,12 +55,14 @@ app.use((req, res, next) => {
     cors: {
       origin: app.get('env') === 'production'
         ? false
-        : ['http://localhost:5000', 'http://0.0.0.0:5000'],
-      methods: ['GET', 'POST']
+        : ['http://localhost:5000', 'http://0.0.0.0:5000', 'http://127.0.0.1:5000'],
+      methods: ['GET', 'POST'],
+      credentials: true
     },
     pingTimeout: 10000,
     pingInterval: 5000,
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    allowEIO3: true
   });
 
   // Track connected clients
@@ -81,8 +83,8 @@ app.use((req, res, next) => {
           context: { messageType: validatedMessage.role }
         });
 
-        // Broadcast validated message to all clients
-        io.emit('message', validatedMessage);
+        // Broadcast validated message to all clients except sender
+        socket.broadcast.emit('message', validatedMessage);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         log(`Message validation error from ${socket.id}: ${errorMessage}`, {
