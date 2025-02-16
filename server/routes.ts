@@ -35,7 +35,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const response = await agentManager.handleMessage(message);
     if (response) {
       const savedResponse = await storage.addMessage(response);
-      io.emit("message", savedResponse); // Added to ensure WebSocket clients get the response
+      // Ensure both HTTP and WebSocket clients get the response
+      io.emit("message", savedResponse);
       res.json([message, savedResponse]);
       return;
     }
@@ -70,14 +71,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const savedMessage = await storage.addMessage(parsed.data);
-        const response = await agentManager.handleMessage(savedMessage);
-
-        // Emit the user's message first
+        // Emit user message to all clients
         io.emit("message", savedMessage);
 
+        const response = await agentManager.handleMessage(savedMessage);
         if (response) {
           const savedResponse = await storage.addMessage(response);
           log(`Sending AI response: ${JSON.stringify(savedResponse)}`);
+          // Emit AI response to all clients
           io.emit("message", savedResponse);
         }
       } catch (error) {
