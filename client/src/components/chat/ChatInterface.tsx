@@ -1,15 +1,28 @@
 import { useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAgentStore } from "@/store/agentStore";
 import { ChatMessage } from "./ChatMessage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { Message } from "@shared/schema";
 
 export function ChatInterface() {
-  const { messages, sendMessage, initializeSocket } = useAgentStore();
+  const { messages, sendMessage, initializeSocket, setMessages } = useAgentStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Fetch initial messages
+  const { data: initialMessages } = useQuery<Message[]>({
+    queryKey: ["/api/messages"],
+  });
+
+  useEffect(() => {
+    if (initialMessages) {
+      setMessages(initialMessages);
+    }
+  }, [initialMessages, setMessages]);
 
   useEffect(() => {
     initializeSocket();
@@ -33,8 +46,8 @@ export function ChatInterface() {
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-4">
-          {messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
+          {messages.map((message, index) => (
+            <ChatMessage key={message.id ?? index} message={message} />
           ))}
         </div>
       </ScrollArea>

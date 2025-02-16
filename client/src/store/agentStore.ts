@@ -7,6 +7,7 @@ interface AgentState {
   agents: Agent[];
   socket: WebSocket | null;
   addMessage: (message: Message) => void;
+  setMessages: (messages: Message[]) => void;
   setAgents: (agents: Agent[]) => void;
   initializeSocket: () => void;
   sendMessage: (content: string) => void;
@@ -23,13 +24,17 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }));
   },
 
+  setMessages: (messages) => {
+    set({ messages });
+  },
+
   setAgents: (agents) => {
     set({ agents });
   },
 
   initializeSocket: () => {
     const socket = createWebSocket();
-    
+
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       get().addMessage(message);
@@ -48,7 +53,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       socket.send(JSON.stringify({
         content,
         role: "user",
-        timestamp: new Date(),
+        metadata: {},
+        timestamp: new Date().toISOString(),
       }));
     }
   },

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertMessageSchema, insertAgentSchema } from "@shared/schema";
 import { AgentManager } from "./agents/agent";
@@ -24,9 +24,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const message = await storage.addMessage(parsed.data);
     const response = await agentManager.handleMessage(message);
     if (response) {
-      await storage.addMessage(response);
+      const savedResponse = await storage.addMessage(response);
+      res.json([message, savedResponse]);
+      return;
     }
-    res.json(message);
+    res.json([message]);
   });
 
   app.get("/api/agents", async (_req, res) => {
@@ -48,19 +50,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString());
-        const parsed = insertMessageSchema.safeParse(message);
+        const parsed = insertMessageSchema.safeParse({
+          ...message,
+          metadata: message.metadata || {},
+        });
+
         if (parsed.success) {
           const savedMessage = await storage.addMessage(parsed.data);
           const response = await agentManager.handleMessage(savedMessage);
-          if (response) {
-            const savedResponse = await storage.addMessage(response);
-            ws.send(JSON.stringify(savedResponse));
-          }
+
+          // Broadcast the user message to all clients
           wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
               client.send(JSON.stringify(savedMessage));
             }
           });
+
+          // If there's a response, save and broadcast it
+          if (response) {
+            const savedResponse = await storage.addMessage(response);
+            wss.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(savedResponse));
+              }
+            });
+          }
         }
       } catch (error) {
         console.error("WebSocket error:", error);
