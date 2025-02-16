@@ -16,7 +16,7 @@ export class AgentManager {
       try {
         const response = await this.deepseek.generateResponse(message.content);
         return {
-          content: response.content,
+          content: response.content || "No response generated",
           role: "assistant",
           metadata: {
             model: "deepseek-coder",
