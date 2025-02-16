@@ -125,10 +125,6 @@ export class WebSocketManager extends EventEmitter {
     this.socket.onmessage = (event) => {
       if (this.isCleanedUp) return;
 
-      if (event.data === 'pong') {
-        this.lastPongTime = Date.now();
-        return;
-      }
       this.handleMessage(event);
     };
   }
@@ -157,7 +153,8 @@ export class WebSocketManager extends EventEmitter {
       }
 
       if (this.socket?.readyState === WebSocket.OPEN) {
-        this.socket.send('ping');
+        // Send ping as JSON
+        this.socket.send(JSON.stringify({ type: 'ping' }));
 
         const timeSinceLastPong = Date.now() - this.lastPongTime;
         if (timeSinceLastPong > this.config.healthCheckInterval * 2) {
@@ -242,6 +239,13 @@ export class WebSocketManager extends EventEmitter {
   private handleMessage(event: MessageEvent): void {
     try {
       const data = JSON.parse(event.data);
+
+      // Handle pong messages
+      if (data.type === 'pong') {
+        this.lastPongTime = Date.now();
+        return;
+      }
+
       this.emit('message', data);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
