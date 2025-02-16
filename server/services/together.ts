@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { log } from "../vite";
 
 const togetherResponseSchema = z.object({
   choices: z.array(
@@ -24,12 +25,15 @@ export class TogetherService {
     this.model = "mistralai/Mixtral-8x7B-Instruct-v0.1";
 
     if (!this.apiKey) {
-      console.warn("Together API key is not set. Using fallback mode for testing.");
+      log("Together API key is not set. Using fallback mode for testing.");
+    } else {
+      log("Together service initialized with API key");
     }
   }
 
   async generateResponse(prompt: string): Promise<{ content: string; error: boolean }> {
     if (this.fallbackMode) {
+      log("Together service in fallback mode, returning demo response");
       return {
         content: "This is a test response. The assistant is currently in demo mode.",
         error: false
@@ -37,7 +41,7 @@ export class TogetherService {
     }
 
     try {
-      console.log("Sending request to Together API with model:", this.model);
+      log("Sending request to Together API with model: " + this.model);
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
@@ -61,16 +65,16 @@ export class TogetherService {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Together API error:", {
+        log("Together API error: " + JSON.stringify({
           status: response.status,
           statusText: response.statusText,
           error: errorData,
           model: this.model,
-        });
+        }));
 
         // Handle rate limits gracefully
         if (response.status === 402 || response.status === 429) {
-          console.log("API usage limits reached, switching to fallback mode");
+          log("API usage limits reached, switching to fallback mode");
           this.fallbackMode = true;
           return {
             content: "I'm currently in demo mode due to API limits. You can still test the interface, but responses will be simulated.",
@@ -85,12 +89,12 @@ export class TogetherService {
       }
 
       const data = await response.json();
-      console.log("Together API response:", data);
+      log("Together API response: " + JSON.stringify(data));
 
       const parsed = togetherResponseSchema.safeParse(data);
 
       if (!parsed.success) {
-        console.error("Invalid API response format:", parsed.error);
+        log("Invalid API response format: " + JSON.stringify(parsed.error));
         return {
           content: "Received an invalid response format. Switching to demo mode.",
           error: true
@@ -102,7 +106,7 @@ export class TogetherService {
         error: false
       };
     } catch (error) {
-      console.error("Together service error:", error);
+      log("Together service error: " + (error instanceof Error ? error.message : String(error)));
       return {
         content: "I'm having trouble connecting to the service. I'll switch to demo mode for now.",
         error: true

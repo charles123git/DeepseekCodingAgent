@@ -3,6 +3,7 @@ import { IStorage } from "../storage";
 import { DeepSeekService } from "../services/deepseek";
 import { TogetherService } from "../services/together";
 import { SYSTEM_PROMPTS, type AgentRole } from "./prompts";
+import { log } from "../vite";
 
 interface ProviderResponse {
   content: string;
@@ -22,6 +23,7 @@ export class AgentManager {
     this.storage = storage;
     this.together = new TogetherService();
     this.deepseek = new DeepSeekService();
+    log("AgentManager initialized with both AI providers");
   }
 
   private async tryProvider(
@@ -32,11 +34,15 @@ export class AgentManager {
     const systemPrompt = SYSTEM_PROMPTS[role];
     const fullPrompt = `${systemPrompt}\n\nUser request: ${message}`;
 
+    log(`Attempting to generate response using ${provider}`);
+    log(`Role: ${role}, Prompt length: ${fullPrompt.length}`);
+
     try {
       const service = provider === "together" ? this.together : this.deepseek;
       const response = await service.generateResponse(fullPrompt);
 
       if (response.error) {
+        log(`${provider} provider error: ${response.errorType}`);
         return {
           content: "",
           error: true,
@@ -44,9 +50,11 @@ export class AgentManager {
         };
       }
 
+      log(`${provider} generated response successfully`);
       return response;
     } catch (error) {
-      console.error(`Error with ${provider}:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log(`Error with ${provider}: ${errorMessage}`);
       const errorType = this.getErrorType(error);
 
       return {
@@ -65,72 +73,48 @@ export class AgentManager {
   }
 
   private determineAgentRole(message: string): AgentRole {
-    // Enhanced role determination based on message content
     const lowerMessage = message.toLowerCase();
 
-    // Review related tasks
     if (lowerMessage.includes('review') || 
         lowerMessage.includes('check') ||
         lowerMessage.includes('analyze') ||
         lowerMessage.includes('test') ||
         lowerMessage.includes('validate')) {
+      log("Determined role: reviewer");
       return 'reviewer';
     }
 
-    // Planning related tasks
     if (lowerMessage.includes('plan') || 
         lowerMessage.includes('design') ||
         lowerMessage.includes('architect') ||
         lowerMessage.includes('structure') ||
         lowerMessage.includes('organize')) {
+      log("Determined role: planner");
       return 'planner';
     }
 
-    // Default to coder for implementation tasks
+    log("Determined role: coder (default)");
     return 'coder';
-  }
-
-  private async tryGenerateResponse(message: string, role: AgentRole): Promise<ProviderResponse> {
-    this.fallbackAttempts = 0;
-    let currentProvider = this.currentProvider;
-
-    while (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
-      console.log(`Attempt ${this.fallbackAttempts + 1} using ${currentProvider}`);
-
-      const response = await this.tryProvider(currentProvider, message, role);
-
-      if (!response.error) {
-        this.currentProvider = currentProvider; // Update successful provider
-        return response;
-      }
-
-      // Switch provider and increment attempt counter
-      currentProvider = currentProvider === "together" ? "deepseek" : "together";
-      this.fallbackAttempts++;
-
-      // Add delay before retry to prevent overwhelming the services
-      await new Promise(resolve => setTimeout(resolve, 1000 * this.fallbackAttempts));
-    }
-
-    return {
-      content: "All available providers are currently experiencing issues. Please try again later.",
-      error: true,
-      errorType: 'service_error'
-    };
   }
 
   async handleMessage(message: Message): Promise<InsertMessage | null> {
     if (message.role === "user") {
       try {
         const startTime = Date.now();
-        console.log("Processing user message:", message.content);
+        log(`Processing user message: "${message.content}"`);
 
         const role = this.determineAgentRole(message.content);
         const response = await this.tryGenerateResponse(message.content, role);
         const duration = Date.now() - startTime;
 
+        if (response.error) {
+          log(`Failed to generate response: ${response.errorType}`);
+        } else {
+          log(`Successfully generated response in ${duration}ms`);
+        }
+
         return {
-          content: response.content,
+          content: response.content || "I apologize, but I encountered an error while processing your request. Please try again.",
           role: "assistant",
           metadata: {
             model: this.currentProvider === "together" ? "mistralai/Mixtral-8x7B-Instruct-v0.1" : "deepseek-coder",
@@ -146,9 +130,10 @@ export class AgentManager {
           serviceId: this.currentProvider,
         };
       } catch (error) {
-        console.error("Error in agent manager:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        log(`Critical error in agent manager: ${errorMessage}`);
         return {
-          content: "An unexpected error occurred. Please try again later.",
+          content: "An unexpected error occurred while processing your request. Please try again later.",
           role: "assistant",
           metadata: {
             error: true,
@@ -163,5 +148,38 @@ export class AgentManager {
       }
     }
     return null;
+  }
+
+  private async tryGenerateResponse(message: string, role: AgentRole): Promise<ProviderResponse> {
+    this.fallbackAttempts = 0;
+    let currentProvider = this.currentProvider;
+
+    log(`Starting response generation with provider: ${currentProvider}`);
+
+    while (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
+      log(`Attempt ${this.fallbackAttempts + 1} using ${currentProvider}`);
+
+      const response = await this.tryProvider(currentProvider, message, role);
+
+      if (!response.error) {
+        this.currentProvider = currentProvider;
+        return response;
+      }
+
+      currentProvider = currentProvider === "together" ? "deepseek" : "together";
+      this.fallbackAttempts++;
+
+      if (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
+        log(`Switching to fallback provider: ${currentProvider}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * this.fallbackAttempts));
+      }
+    }
+
+    log("All provider attempts exhausted");
+    return {
+      content: "All available providers are currently experiencing issues. Please try again later.",
+      error: true,
+      errorType: 'service_error'
+    };
   }
 }

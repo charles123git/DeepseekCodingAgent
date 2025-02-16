@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { log } from "../vite";
 
 const deepseekResponseSchema = z.object({
   choices: z.array(
@@ -17,7 +18,7 @@ export class DeepSeekService {
   private model: string;
   private simulateErrors: boolean;
 
-  constructor(options = { simulateErrors: false }) {  // Changed default to false for tests
+  constructor(options = { simulateErrors: false }) {
     this.apiKey = process.env.DEEPSEEK_API_KEY || "";
     this.baseUrl = "https://api.deepseek.com/v1";
     this.fallbackMode = !this.apiKey;
@@ -25,12 +26,15 @@ export class DeepSeekService {
     this.simulateErrors = options.simulateErrors;
 
     if (!this.apiKey) {
-      console.warn("DeepSeek API key is not set. Using fallback mode for testing.");
+      log("DeepSeek API key is not set. Using fallback mode for testing.");
+    } else {
+      log("DeepSeek service initialized with API key");
     }
   }
 
   async generateResponse(prompt: string): Promise<{ content: string; error: boolean }> {
     if (this.fallbackMode) {
+      log("DeepSeek service in fallback mode, returning demo response");
       return {
         content: "This is a test response. The assistant is currently in demo mode.",
         error: false
@@ -38,14 +42,7 @@ export class DeepSeekService {
     }
 
     try {
-      // Simulate errors only when enabled and not in fallback mode
-      if (this.simulateErrors && Math.random() < 0.3) {  // 30% chance of failure
-        console.log("Simulating DeepSeek failure to test fallback");
-        return {
-          content: "Service temporarily unavailable",
-          error: true
-        };
-      }
+      log("Sending request to DeepSeek API with model: " + this.model);
 
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
@@ -69,15 +66,15 @@ export class DeepSeekService {
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("DeepSeek API error:", {
+        log("DeepSeek API error: " + JSON.stringify({
           status: response.status,
           statusText: response.statusText,
           error: errorData,
-        });
+        }));
 
         // Handle rate limits by switching to fallback mode
         if (response.status === 402 || response.status === 429) {
-          console.log("API usage limits reached, switching to fallback mode");
+          log("API usage limits reached, switching to fallback mode");
           this.fallbackMode = true;
           return {
             content: "I'm currently in demo mode due to API limits. You can still test the interface, but responses will be simulated.",
@@ -92,10 +89,12 @@ export class DeepSeekService {
       }
 
       const data = await response.json();
+      log("DeepSeek API response: " + JSON.stringify(data));
+
       const parsed = deepseekResponseSchema.safeParse(data);
 
       if (!parsed.success) {
-        console.error("Invalid API response format:", parsed.error);
+        log("Invalid API response format: " + JSON.stringify(parsed.error));
         return {
           content: "Received an invalid response format. Switching to demo mode.",
           error: true
@@ -107,7 +106,7 @@ export class DeepSeekService {
         error: false
       };
     } catch (error) {
-      console.error("DeepSeek service error:", error);
+      log("DeepSeek service error: " + (error instanceof Error ? error.message : String(error)));
       this.fallbackMode = true;
       return {
         content: "I'm having trouble connecting to the service. I'll switch to demo mode for now.",
