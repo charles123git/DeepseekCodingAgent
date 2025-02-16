@@ -15,12 +15,14 @@ export class TogetherService {
   private baseUrl: string;
   private fallbackMode: boolean;
   private model: string;
+  private simulateErrors: boolean;
 
-  constructor() {
+  constructor(options = { simulateErrors: true }) {
     this.apiKey = process.env.TOGETHER_API_KEY || "";
     this.baseUrl = "https://api.together.xyz/v1";
     this.fallbackMode = !this.apiKey;
     this.model = "starcoderplus";  // Default to StarCoder+ for code generation
+    this.simulateErrors = options.simulateErrors;
 
     if (!this.apiKey) {
       console.warn("Together API key is not set. Using fallback mode for testing.");
@@ -31,11 +33,20 @@ export class TogetherService {
     if (this.fallbackMode) {
       return {
         content: "This is a test response. The assistant is currently in demo mode.",
-        error: false
+        error: false  // Demo mode responses should not be marked as errors
       };
     }
 
     try {
+      // Simulate errors only when enabled and not in fallback mode
+      if (this.simulateErrors && Math.random() < 0.3) {  // 30% chance of failure
+        console.log("Simulating Together.ai failure to test fallback");
+        return {
+          content: "Service temporarily unavailable",
+          error: true
+        };
+      }
+
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -69,7 +80,7 @@ export class TogetherService {
           this.fallbackMode = true;
           return {
             content: "I'm currently in demo mode due to API limits. You can still test the interface, but responses will be simulated.",
-            error: true
+            error: false  // Since we're gracefully falling back, this isn't an error state
           };
         }
 
@@ -90,15 +101,6 @@ export class TogetherService {
         };
       }
 
-      // Simulate an occasional error to test fallback
-      if (Math.random() < 0.3) {  // 30% chance of failure
-        console.log("Simulating Together.ai failure to test fallback");
-        return {
-          content: "Service temporarily unavailable",
-          error: true
-        };
-      }
-
       return { 
         content: parsed.data.choices[0].message.content,
         error: false
@@ -108,7 +110,7 @@ export class TogetherService {
       this.fallbackMode = true;
       return {
         content: "I'm having trouble connecting to the service. I'll switch to demo mode for now.",
-        error: true
+        error: false  // Since we're gracefully falling back, this isn't an error state
       };
     }
   }
