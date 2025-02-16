@@ -12,8 +12,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isError = Boolean(message.metadata?.error);
   const hasCode = hasCodeBlock(message.content);
-
-  // Split content into text and code blocks
   const parts = hasCode ? message.content.split(/(```[\s\S]*?```)/g) : [message.content];
 
   return (
