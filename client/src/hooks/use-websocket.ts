@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
-import { Message } from "@shared/schema";
+import type { Message, InsertMessage } from "@shared/schema";
 import { log } from "@/lib/utils";
 
 export function useWebSocket() {
@@ -28,8 +28,9 @@ export function useWebSocket() {
     });
 
     socketRef.current.on('message', (message: Message) => {
-      queryClient.setQueryData(['/api/messages'], (old: Message[] = []) => {
-        // Prevent duplicate messages
+      log('Received message:', message);
+      queryClient.setQueryData<Message[]>(['/api/messages'], (old = []) => {
+        // Prevent duplicate messages by checking ID
         if (old.some(m => m.id === message.id)) {
           return old;
         }
@@ -43,7 +44,6 @@ export function useWebSocket() {
 
     socketRef.current.on('disconnect', (reason) => {
       log('WebSocket disconnected', { level: 'info', context: { reason } });
-      // Attempt to reconnect unless explicitly disconnected
       if (reason !== 'io client disconnect') {
         setTimeout(connect, 1000);
       }
@@ -65,7 +65,7 @@ export function useWebSocket() {
     }
   }, []);
 
-  const sendMessage = useCallback(async (message: Message) => {
+  const sendMessage = useCallback(async (message: Partial<InsertMessage>) => {
     if (!socketRef.current?.connected) {
       await new Promise<void>((resolve) => {
         if (socketRef.current?.connected) {
@@ -76,7 +76,14 @@ export function useWebSocket() {
         }
       });
     }
-    socketRef.current?.emit('message', message);
+
+    socketRef.current?.emit('message', {
+      ...message,
+      timestamp: message.timestamp || new Date(),
+      metadata: message.metadata || {},
+      agentId: null,
+      serviceId: null
+    });
   }, [connect]);
 
   useEffect(() => {
