@@ -19,6 +19,8 @@ export function useWebSocket() {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
+      autoConnect: true,
+      forceNew: false
     });
 
     socketRef.current.on('connect', () => {
@@ -26,8 +28,13 @@ export function useWebSocket() {
     });
 
     socketRef.current.on('message', (message: Message) => {
-      // Update messages in the query cache
-      queryClient.setQueryData(['messages'], (old: Message[] = []) => [...old, message]);
+      queryClient.setQueryData(['/api/messages'], (old: Message[] = []) => {
+        // Prevent duplicate messages
+        if (old.some(m => m.id === message.id)) {
+          return old;
+        }
+        return [...old, message];
+      });
     });
 
     socketRef.current.on('error', (error: any) => {
@@ -36,6 +43,10 @@ export function useWebSocket() {
 
     socketRef.current.on('disconnect', (reason) => {
       log('WebSocket disconnected', { level: 'info', context: { reason } });
+      // Attempt to reconnect unless explicitly disconnected
+      if (reason !== 'io client disconnect') {
+        setTimeout(connect, 1000);
+      }
     });
 
     socketRef.current.on('reconnect', (attemptNumber) => {
@@ -54,12 +65,19 @@ export function useWebSocket() {
     }
   }, []);
 
-  const sendMessage = useCallback((message: Message) => {
+  const sendMessage = useCallback(async (message: Message) => {
     if (!socketRef.current?.connected) {
-      throw new Error('WebSocket not connected');
+      await new Promise<void>((resolve) => {
+        if (socketRef.current?.connected) {
+          resolve();
+        } else {
+          connect();
+          socketRef.current?.once('connect', () => resolve());
+        }
+      });
     }
-    socketRef.current.emit('message', message);
-  }, []);
+    socketRef.current?.emit('message', message);
+  }, [connect]);
 
   useEffect(() => {
     connect();
