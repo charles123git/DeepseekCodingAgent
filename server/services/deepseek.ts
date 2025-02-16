@@ -50,7 +50,11 @@ export class DeepSeekService {
 
         if (response.status === 402) {
           return {
-            content: "The DeepSeek API account has insufficient balance. Please contact the administrator to resolve this issue.",
+            content: "DeepSeek API service is currently experiencing limitations:\n\n" +
+                    "Due to server resource constraints, DeepSeek has temporarily suspended API service recharges. " +
+                    "If you have an existing balance, you can continue using the service. " +
+                    "Otherwise, please try again later when the service returns to normal operation.\n\n" +
+                    "We apologize for any inconvenience.",
             error: true
           };
         }

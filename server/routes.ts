@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { insertMessageSchema, insertAgentSchema } from "@shared/schema";
 import { AgentManager } from "./agents/agent";
+import { log } from "./vite";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -47,9 +48,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   wss.on("connection", (ws) => {
+    log("New WebSocket connection established");
+
     ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString());
+        log(`Received message: ${JSON.stringify(message)}`);
+
         const parsed = insertMessageSchema.safeParse({
           ...message,
           metadata: message.metadata || {},
@@ -69,6 +74,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // If there's a response, save and broadcast it
           if (response) {
             const savedResponse = await storage.addMessage(response);
+            log(`Sending AI response: ${JSON.stringify(savedResponse)}`);
             wss.clients.forEach((client) => {
               if (client.readyState === WebSocket.OPEN) {
                 client.send(JSON.stringify(savedResponse));
@@ -77,8 +83,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
       } catch (error) {
-        console.error("WebSocket error:", error);
+        log(`WebSocket error: ${error}`);
+        // Send error message back to the client
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            content: "An error occurred while processing your message",
+            role: "system",
+            metadata: { error: true },
+            timestamp: new Date().toISOString(),
+          }));
+        }
       }
+    });
+
+    ws.on("close", () => {
+      log("WebSocket connection closed");
+    });
+
+    ws.on("error", (error) => {
+      log(`WebSocket error: ${error}`);
     });
   });
 
