@@ -68,6 +68,7 @@ export class TogetherService {
           model: this.model,
         });
 
+        // Handle rate limits gracefully
         if (response.status === 402 || response.status === 429) {
           console.log("API usage limits reached, switching to fallback mode");
           this.fallbackMode = true;
@@ -102,10 +103,9 @@ export class TogetherService {
       };
     } catch (error) {
       console.error("Together service error:", error);
-      this.fallbackMode = true;
       return {
         content: "I'm having trouble connecting to the service. I'll switch to demo mode for now.",
-        error: false
+        error: true
       };
     }
   }
