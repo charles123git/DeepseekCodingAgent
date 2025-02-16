@@ -24,14 +24,16 @@ global.fetch = vi.fn(async () => ({
   })
 }));
 
-// Mock WebSocket for all tests
-global.WebSocket = vi.fn(() => ({
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  close: vi.fn(),
-  send: vi.fn(),
-  readyState: WebSocket.CONNECTING,
-})) as any;
+// Mock Socket.IO instead of native WebSocket
+vi.mock('socket.io-client', () => ({
+  default: vi.fn(() => ({
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  })),
+}));
 
 // Add error boundary for test environment
 global.process.on('unhandledRejection', (err) => {
@@ -42,7 +44,7 @@ global.process.on('unhandledRejection', (err) => {
 const originalError = console.error;
 console.error = (...args) => {
   // Only log the error in test environment, don't throw
-  if (process.env.NODE_ENV === 'test') {
+  if (import.meta.env.MODE === 'test') {
     originalError.apply(console, args);
   }
 };

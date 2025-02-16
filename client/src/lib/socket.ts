@@ -1,6 +1,14 @@
 import { io, type Socket } from "socket.io-client";
 import { log } from "@/lib/utils";
 import { EventEmitter } from "./events";
+import { z } from "zod";
+
+// Message validation schema - keep in sync with server
+const MessageSchema = z.object({
+  content: z.string().min(1, "Message content cannot be empty"),
+  role: z.enum(["user", "assistant", "system"]),
+  metadata: z.record(z.unknown()).optional(),
+});
 
 interface SocketConfig {
   maxRetries?: number;
@@ -23,6 +31,7 @@ export class SocketManager extends EventEmitter {
   private config: Required<SocketConfig>;
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
   private isCleanedUp: boolean = false;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(config: SocketConfig = {}) {
     super();
@@ -59,13 +68,35 @@ export class SocketManager extends EventEmitter {
         reconnectionAttempts: this.config.maxRetries,
         reconnectionDelay: this.config.initialRetryDelay,
         timeout: this.config.connectionTimeout,
+        transports: ['websocket', 'polling']
       });
 
       this.setupEventHandlers();
+      this.setupHealthCheck();
       this.emitStateChange();
     } catch (error) {
       this.handleConnectionError(error);
     }
+  }
+
+  private setupHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+
+    this.healthCheckInterval = setInterval(() => {
+      if (this.socket?.connected) {
+        const startTime = Date.now();
+        this.socket.emit('ping');
+        this.socket.once('pong', () => {
+          const latency = Date.now() - startTime;
+          log("Health check successful", {
+            level: 'debug',
+            context: { latency }
+          });
+        });
+      }
+    }, this.config.healthCheckInterval);
   }
 
   private setupEventHandlers(): void {
@@ -95,18 +126,27 @@ export class SocketManager extends EventEmitter {
       this.handleConnectionError(error);
     });
 
+    this.socket.on('error', (error) => {
+      log("Socket error received", {
+        level: 'error',
+        context: { error }
+      });
+      this.emit('error', error);
+    });
+
     this.socket.on('message', (data) => {
       if (this.isCleanedUp) return;
 
       try {
-        this.emit('message', data);
+        const validatedMessage = MessageSchema.parse(data);
+        this.emit('message', validatedMessage);
         log("Processed incoming message", { 
           level: 'debug',
-          context: { messageType: data.type }
+          context: { messageType: validatedMessage.role }
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        log("Error handling Socket.IO message", { 
+        log("Message validation error", { 
           level: 'error',
           context: { error: errorMessage }
         });
@@ -130,15 +170,28 @@ export class SocketManager extends EventEmitter {
 
   send(message: string): void {
     if (this.socket?.connected) {
-      this.socket.emit('message', JSON.parse(message));
-      log("Message sent", { level: 'debug' });
+      try {
+        const data = JSON.parse(message);
+        const validatedMessage = MessageSchema.parse(data);
+        this.socket.emit('message', validatedMessage);
+        log("Message sent successfully", { 
+          level: 'debug',
+          context: { messageType: validatedMessage.role }
+        });
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        log("Message validation failed", {
+          level: 'error',
+          context: { error: errorMessage }
+        });
+        throw new Error(`Invalid message format: ${errorMessage}`);
+      }
     } else {
       log("Message not sent - connection not ready", { 
         level: 'warn',
-        context: { 
-          connectionState: this.connectionState 
-        }
+        context: { connectionState: this.connectionState }
       });
+      throw new Error("Socket not connected");
     }
   }
 
@@ -147,6 +200,11 @@ export class SocketManager extends EventEmitter {
       level: 'info',
       context: { fullCleanup }
     });
+
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
 
     if (fullCleanup) {
       this.isCleanedUp = true;
