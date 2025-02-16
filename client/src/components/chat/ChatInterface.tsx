@@ -11,10 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 import type { Message } from "@shared/schema";
 
 export function ChatInterface() {
+  const { toast } = useToast();
   const { messages, sendMessage, initializeSocket, setMessages, hasInsufficientBalance } = useAgentStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
 
   // Fetch initial messages
   const { data: initialMessages } = useQuery<Message[]>({
@@ -39,42 +39,49 @@ export function ChatInterface() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputRef.current?.value) {
-      sendMessage(
-        inputRef.current.value,
-        (errorMessage) => {
-          toast({
-            title: "Error",
-            description: errorMessage,
-            variant: "destructive",
-          });
-        }
-      );
-      inputRef.current.value = "";
-    }
+    if (!inputRef.current?.value.trim()) return;
+
+    sendMessage(
+      inputRef.current.value,
+      (errorMessage) => {
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
+    );
+    inputRef.current.value = "";
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full">
       {hasInsufficientBalance && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
+        <Alert className="mb-4 bg-gray-50 border-gray-200">
+          <AlertCircle className="h-4 w-4 text-gray-500" />
           <AlertDescription className="space-y-2">
             <p>
-              DeepSeek API service is currently limited due to server constraints. 
-              New account top-ups are temporarily suspended.
+              The AI service is temporarily paused.
             </p>
-            <p className="text-sm">
-              You can check the service status at{" "}
+            <div className="flex gap-2 text-sm text-gray-600">
               <a
                 href="https://platform.deepseek.com/top_up"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline hover:text-red-300"
+                className="text-blue-600 hover:text-blue-800 underline"
               >
-                platform.deepseek.com/top_up
+                Check service status
               </a>
-            </p>
+              <span>•</span>
+              <a
+                href="https://help.deepseek.com/issues/service-maintenance"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 underline"
+              >
+                Technical details
+              </a>
+            </div>
           </AlertDescription>
         </Alert>
       )}
@@ -89,11 +96,14 @@ export function ChatInterface() {
         <div className="flex gap-2">
           <Input
             ref={inputRef}
-            placeholder="Type your message..."
+            placeholder={hasInsufficientBalance ? "Service temporarily unavailable" : "Type your message..."}
             className="flex-1"
-            disabled={hasInsufficientBalance}
           />
-          <Button type="submit" disabled={hasInsufficientBalance}>
+          <Button 
+            type="submit" 
+            variant={hasInsufficientBalance ? "outline" : "default"}
+            className={hasInsufficientBalance ? "text-gray-400" : ""}
+          >
             <Send className="h-4 w-4" />
           </Button>
         </div>

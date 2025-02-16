@@ -23,9 +23,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   addMessage: (message) => {
     set((state) => ({
       messages: [...state.messages, message],
-      // Update balance status based on error message
-      hasInsufficientBalance: message.metadata?.error && 
-        message.content.includes("DeepSeek API"),
+      hasInsufficientBalance: Boolean(
+        message.metadata?.error && 
+        message.content.includes("temporarily unavailable")
+      )
     }));
   },
 
@@ -72,7 +73,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const { socket, hasInsufficientBalance } = get();
 
     if (hasInsufficientBalance) {
-      onError("Please add funds to your DeepSeek account before sending more messages.");
+      onError("Please check the service status before trying again.");
       return;
     }
 
