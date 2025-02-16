@@ -1,17 +1,3 @@
-project/
-├── client/              # Frontend React application
-│   ├── src/
-│   │   ├── components/ # Reusable UI components
-│   │   ├── pages/      # Page components
-│   │   ├── store/      # State management
-│   │   └── lib/        # Utility functions
-├── server/             # Backend Express server
-│   ├── agents/         # AI agent implementation
-│   ├── services/       # External services (DeepSeek)
-│   └── routes.ts       # API endpoints
-└── shared/            # Shared types and schemas
-```
-
 ## 🚀 Getting Started with Replit
 
 ### Prerequisites
@@ -79,6 +65,61 @@ project/
    # Update database schema
    npm run db:push
    ```
+
+## 📊 Test Requirements
+
+### Test Rubric System
+
+The project implements a comprehensive test rubric to ensure quality and reliability. Tests are categorized by priority:
+
+#### Critical MVP Tests (Must Pass)
+- **Agent Communication**
+  - Message routing between agents (90% coverage)
+  - Agent role detection accuracy (90% coverage)
+  - Error handling and fallback mechanisms (90% coverage)
+
+- **AI Provider Integration**
+  - Provider API request/response handling (90% coverage)
+  - Provider fallback mechanism (90% coverage)
+
+- **WebSocket Communication**
+  - Connection management (90% coverage)
+  - Message serialization/deserialization (90% coverage)
+  - Connection error handling (90% coverage)
+
+#### Non-Critical Tests
+- Inter-agent message handling (85% coverage)
+- Provider API integration tests (85% coverage)
+- Real-time message delivery (85% coverage)
+
+### Running Test Validation
+
+```bash
+npm run test
+```
+
+The validation script will:
+1. Run all tests and collect results
+2. Compare against MVP requirements
+3. Generate a detailed report showing:
+   - Test coverage by feature
+   - Missing test types
+   - Dependencies status
+   - Critical vs non-critical test results
+
+### Test Dependencies
+
+Tests follow a hierarchical structure:
+- Basic functionality tests must pass before complex integration tests
+- Each feature's tests build upon successful validation of their dependencies
+- The validation system tracks and enforces these dependencies
+
+### Development Workflow
+
+1. Write tests according to the rubric requirements
+2. Run validation before submitting changes
+3. All critical tests must pass for the build to succeed
+4. Non-critical test failures generate warnings but don't block deployment
 
 ## 📚 Additional Resources
 
