@@ -13,8 +13,8 @@ import cn from 'classnames';
 
 export function ChatInterface() {
   const { toast } = useToast();
-  const { messages, sendMessage, setMessages, hasInsufficientBalance } = useAgentStore();
-  const { sendMessage: sendWebSocketMessage } = useWebSocket();
+  const { messages, setMessages, hasInsufficientBalance } = useAgentStore();
+  const { sendMessage: sendWebSocketMessage, isConnected } = useWebSocket();
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,30 +43,23 @@ export function ChatInterface() {
     e.preventDefault();
     if (!inputRef.current?.value.trim() || isLoading) return;
 
-    setIsLoading(true);
     const content = inputRef.current.value;
     inputRef.current.value = "";
+    setIsLoading(true);
 
     try {
-      // Create the message object
-      const userMessage: Partial<Message> = {
+      if (!isConnected) {
+        throw new Error('WebSocket not connected');
+      }
+
+      const message = {
         content,
         role: "user",
         metadata: {},
-        timestamp: new Date(),
+        timestamp: new Date()
       };
 
-      // Send through WebSocket for real-time updates
-      await sendWebSocketMessage(userMessage);
-
-      // Then through HTTP as backup and to ensure persistence
-      await sendMessage(content, (errorMessage) => {
-        toast({
-          title: "Error",
-          description: errorMessage,
-          variant: "destructive",
-        });
-      });
+      await sendWebSocketMessage(message);
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -92,7 +85,7 @@ export function ChatInterface() {
 
       <ScrollArea className="flex-1">
         <div className="space-y-3 max-w-4xl mx-auto py-4 px-3">
-          {messages.map((message: Message, index) => (
+          {messages.map((message, index) => (
             <ChatMessage key={message.id ?? index} message={message} />
           ))}
           {isLoading && (
@@ -115,7 +108,7 @@ export function ChatInterface() {
           />
           <Button
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || !isConnected}
             variant={hasInsufficientBalance ? "outline" : "default"}
             className={cn(
               hasInsufficientBalance && "text-muted-foreground",
