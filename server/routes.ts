@@ -35,6 +35,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const response = await agentManager.handleMessage(message);
     if (response) {
       const savedResponse = await storage.addMessage(response);
+      io.emit("message", savedResponse); // Added to ensure WebSocket clients get the response
       res.json([message, savedResponse]);
       return;
     }
