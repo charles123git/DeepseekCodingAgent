@@ -68,6 +68,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const parsed = insertMessageSchema.safeParse({
           ...message,
           metadata: message.metadata || {},
+          timestamp: message.timestamp || new Date().toISOString(),
         });
 
         if (!parsed.success) {

@@ -70,14 +70,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     log("Initializing new WebSocket connection", { level: 'info' });
     const wsManager = createWebSocket({
-      maxRetries: 1, // Minimal retries to avoid connection spam
+      maxRetries: 3,
       initialRetryDelay: 1000,
-      maxRetryDelay: 2000, // Short retry delay
+      maxRetryDelay: 5000,
       healthCheckInterval: 30000,
       connectionTimeout: 5000,
     });
 
-    wsManager.on('message', (data) => {
+    wsManager.on('message', (data: any) => {
       try {
         get().addMessage(data);
         log("Processed incoming message", { 
@@ -93,7 +93,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
     });
 
-    wsManager.on('stateChange', (state) => {
+    wsManager.on('stateChange', (state: string) => {
       log("WebSocket state changed", { 
         level: 'info',
         context: { newState: state }
@@ -126,11 +126,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
 
     try {
+      // Create a properly formatted message object
       const message = {
         content,
-        role: "user",
+        role: "user" as const,
         metadata: {},
-        timestamp: new Date().toISOString(),
       };
 
       wsManager.send(JSON.stringify(message));
