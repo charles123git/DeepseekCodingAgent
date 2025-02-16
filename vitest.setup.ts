@@ -24,16 +24,23 @@ global.fetch = vi.fn(async () => ({
   })
 }));
 
-// Mock Socket.IO instead of native WebSocket
-vi.mock('socket.io-client', () => ({
-  default: vi.fn(() => ({
-    on: vi.fn(),
-    off: vi.fn(),
-    emit: vi.fn(),
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-  })),
-}));
+// Mock WebSocket instead of Socket.IO
+class MockWebSocket {
+  static OPEN = 1;
+  readyState = 1;
+  onmessage: ((event: any) => void) | null = null;
+  onopen: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: ((error: any) => void) | null = null;
+
+  constructor(url: string) {}
+
+  send(data: string) {}
+  close() {}
+}
+
+// @ts-ignore - override WebSocket for tests
+global.WebSocket = MockWebSocket;
 
 // Add error boundary for test environment
 global.process.on('unhandledRejection', (err) => {
