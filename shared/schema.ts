@@ -25,7 +25,7 @@ export const agents = pgTable("agents", {
 export const services = pgTable("services", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  provider: text("provider").notNull(), // e.g., 'together', 'deepseek', etc.
+  provider: text("provider").notNull(),
   apiKey: text("api_key"),
   config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
   status: text("status").notNull().default('active'),
@@ -34,31 +34,34 @@ export const services = pgTable("services", {
   isEnabled: boolean("is_enabled").notNull().default(true),
 });
 
-export const insertMessageSchema = createInsertSchema(messages).pick({
-  content: true,
-  role: true,
-  metadata: true,
-  agentId: true,
-  serviceId: true,
+// Base schema for messages with validation rules
+const messageBaseSchema = z.object({
+  content: z.string().min(1, "Content cannot be empty"),
+  role: z.enum(["user", "assistant", "system"]),
+  metadata: z.record(z.unknown()).default({}),
+  agentId: z.string().optional(),
+  serviceId: z.string().optional(),
 });
 
-export const insertAgentSchema = createInsertSchema(agents).pick({
-  name: true,
-  role: true,
-  capabilities: true,
-  preferredService: true,
-  fallbackServices: true,
-  isActive: true,
+// Capability schema for agents
+const capabilitySchema = z.object({
+  name: z.string().min(1, "Capability name cannot be empty"),
+  description: z.string().min(1, "Capability description cannot be empty"),
 });
 
-export const insertServiceSchema = createInsertSchema(services).pick({
-  name: true,
-  provider: true,
-  apiKey: true,
-  config: true,
-  status: true,
-  isEnabled: true,
+// Base schema for agents with validation rules
+const agentBaseSchema = z.object({
+  name: z.string().min(1, "Agent name cannot be empty"),
+  role: z.enum(["planner", "coder", "reviewer"]),
+  capabilities: z.array(capabilitySchema).default([]),
+  preferredService: z.string().optional(),
+  fallbackServices: z.array(z.string()).default([]),
+  isActive: z.boolean().default(true),
 });
+
+export const insertMessageSchema = createInsertSchema(messages).merge(messageBaseSchema);
+export const insertAgentSchema = createInsertSchema(agents).merge(agentBaseSchema);
+export const insertServiceSchema = createInsertSchema(services);
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
