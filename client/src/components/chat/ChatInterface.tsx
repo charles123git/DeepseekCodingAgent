@@ -53,12 +53,14 @@ export function ChatInterface() {
         role: "user",
         metadata: {},
         timestamp: new Date(),
+        agentId: null,
+        serviceId: null
       };
 
-      // First, send the message through WebSocket
+      // Send through WebSocket first
       await sendWebSocketMessage(message);
 
-      // Then send through regular HTTP for redundancy
+      // Then through HTTP as backup
       await sendMessage(content, (errorMessage) => {
         toast({
           title: "Error",
@@ -91,7 +93,7 @@ export function ChatInterface() {
 
       <ScrollArea className="flex-1">
         <div className="space-y-3 max-w-4xl mx-auto py-4 px-3">
-          {messages.map((message, index) => (
+          {messages.map((message: Message, index) => (
             <ChatMessage key={message.id ?? index} message={message} />
           ))}
           {isLoading && (

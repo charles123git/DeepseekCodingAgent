@@ -41,21 +41,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json([message]);
   });
 
-  app.get("/api/agents", async (_req, res) => {
-    const agents = await storage.getAgents();
-    res.json(agents);
-  });
-
-  app.post("/api/agents", async (req, res) => {
-    const parsed = insertAgentSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error });
-      return;
-    }
-    const agent = await storage.addAgent(parsed.data);
-    res.json(agent);
-  });
-
   io.on("connection", (socket) => {
     log("New Socket.IO connection established");
 
@@ -86,6 +71,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const savedMessage = await storage.addMessage(parsed.data);
         const response = await agentManager.handleMessage(savedMessage);
 
+        // Emit the user's message first
         io.emit("message", savedMessage);
 
         if (response) {
