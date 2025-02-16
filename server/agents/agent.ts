@@ -8,7 +8,6 @@ import { log } from "../vite";
 interface ProviderResponse {
   content: string;
   error: boolean;
-  errorType?: 'rate_limit' | 'quota_exceeded' | 'service_error';
 }
 
 export class AgentManager {
@@ -23,7 +22,6 @@ export class AgentManager {
     this.storage = storage;
     this.together = new TogetherService();
     this.deepseek = new DeepSeekService();
-    log("AgentManager initialized with both AI providers");
   }
 
   private async tryProvider(
@@ -34,42 +32,17 @@ export class AgentManager {
     const systemPrompt = SYSTEM_PROMPTS[role];
     const fullPrompt = `${systemPrompt}\n\nUser request: ${message}`;
 
-    log(`Attempting to generate response using ${provider}`);
-    log(`Role: ${role}, Prompt length: ${fullPrompt.length}`);
-
     try {
       const service = provider === "together" ? this.together : this.deepseek;
       const response = await service.generateResponse(fullPrompt);
-
-      if (response.error) {
-        log(`${provider} provider error: ${response.errorType}`);
-        return {
-          content: "",
-          error: true,
-          errorType: 'service_error'
-        };
-      }
-
-      log(`${provider} generated response successfully`);
       return response;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      log(`Error with ${provider}: ${errorMessage}`);
-      const errorType = this.getErrorType(error);
-
+      log(`Error with ${provider}: ${error instanceof Error ? error.message : String(error)}`);
       return {
         content: "",
-        error: true,
-        errorType
+        error: true
       };
     }
-  }
-
-  private getErrorType(error: any): ProviderResponse['errorType'] {
-    const errorMessage = error?.message?.toLowerCase() || '';
-    if (errorMessage.includes('rate limit')) return 'rate_limit';
-    if (errorMessage.includes('quota')) return 'quota_exceeded';
-    return 'service_error';
   }
 
   private determineAgentRole(message: string): AgentRole {
@@ -77,23 +50,16 @@ export class AgentManager {
 
     if (lowerMessage.includes('review') || 
         lowerMessage.includes('check') ||
-        lowerMessage.includes('analyze') ||
-        lowerMessage.includes('test') ||
-        lowerMessage.includes('validate')) {
-      log("Determined role: reviewer");
+        lowerMessage.includes('analyze')) {
       return 'reviewer';
     }
 
     if (lowerMessage.includes('plan') || 
         lowerMessage.includes('design') ||
-        lowerMessage.includes('architect') ||
-        lowerMessage.includes('structure') ||
-        lowerMessage.includes('organize')) {
-      log("Determined role: planner");
+        lowerMessage.includes('architect')) {
       return 'planner';
     }
 
-    log("Determined role: coder (default)");
     return 'coder';
   }
 
@@ -101,101 +67,60 @@ export class AgentManager {
     this.fallbackAttempts = 0;
     let currentProvider = this.currentProvider;
 
-    log(`Starting response generation with provider: ${currentProvider}`);
-
     while (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
-      log(`Attempt ${this.fallbackAttempts + 1} using ${currentProvider}`);
-
       const response = await this.tryProvider(currentProvider, message, role);
-      log(`Provider response: ${JSON.stringify(response)}`);
 
       if (!response.error && response.content) {
-        log(`Successfully got response from ${currentProvider}`);
         this.currentProvider = currentProvider;
         return response;
       }
 
-      log(`Provider ${currentProvider} failed, trying fallback`);
       currentProvider = currentProvider === "together" ? "deepseek" : "together";
       this.fallbackAttempts++;
 
       if (this.fallbackAttempts < this.MAX_FALLBACK_ATTEMPTS) {
-        log(`Switching to fallback provider: ${currentProvider}`);
-        await new Promise(resolve => setTimeout(resolve, 1000 * this.fallbackAttempts));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
-    log("All provider attempts exhausted");
     return {
-      content: "All available providers are currently experiencing issues. Please try again later.",
-      error: true,
-      errorType: 'service_error'
+      content: "Service unavailable. Please try again later.",
+      error: true
     };
   }
 
   async handleMessage(message: Message): Promise<InsertMessage | null> {
-    if (message.role === "user") {
-      try {
-        const startTime = Date.now();
-        log(`Processing user message: "${message.content}"`);
+    if (message.role !== "user") return null;
 
-        const role = this.determineAgentRole(message.content);
-        const response = await this.tryGenerateResponse(message.content, role);
-        const duration = Date.now() - startTime;
+    try {
+      const role = this.determineAgentRole(message.content);
+      const response = await this.tryGenerateResponse(message.content, role);
 
-        log(`Generated response: ${JSON.stringify(response)}`);
-
-        if (response.error) {
-          log(`Failed to generate response: ${response.errorType}`);
-          return {
-            content: "I apologize, but I encountered an error while processing your request. Please try again.",
-            role: "assistant",
-            metadata: {
-              error: true,
-              errorType: response.errorType,
-              timestamp: new Date().toISOString(),
-              provider: this.currentProvider
-            },
-            timestamp: new Date(),
-            agentId: 'system',
-            serviceId: 'error',
-          };
-        }
-
-        log(`Successfully generated response in ${duration}ms`);
-        return {
-          content: response.content,
-          role: "assistant",
-          metadata: {
-            model: this.currentProvider === "together" ? "mistralai/Mixtral-8x7B-Instruct-v0.1" : "deepseek-coder",
-            timestamp: new Date().toISOString(),
-            error: false,
-            provider: this.currentProvider,
-            duration,
-            agentRole: role
-          },
-          timestamp: new Date(),
-          agentId: role,
-          serviceId: this.currentProvider,
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        log(`Critical error in agent manager: ${errorMessage}`);
-        return {
-          content: "An unexpected error occurred while processing your request. Please try again later.",
-          role: "assistant",
-          metadata: {
-            error: true,
-            errorType: 'service_error',
-            timestamp: new Date().toISOString(),
-            provider: this.currentProvider
-          },
-          timestamp: new Date(),
-          agentId: 'system',
-          serviceId: 'error',
-        };
-      }
+      return {
+        content: response.error ? 
+          "I encountered an error processing your request. Please try again." : 
+          response.content,
+        role: "assistant",
+        metadata: {
+          provider: this.currentProvider,
+          model: this.currentProvider === "together" ? 
+            "mistralai/Mixtral-8x7B-Instruct-v0.1" : 
+            "deepseek-coder"
+        },
+        timestamp: new Date(),
+        agentId: null,
+        serviceId: null
+      };
+    } catch (error) {
+      log(`Error handling message: ${error instanceof Error ? error.message : String(error)}`);
+      return {
+        content: "An unexpected error occurred. Please try again later.",
+        role: "assistant",
+        metadata: { error: true },
+        timestamp: new Date(),
+        agentId: null,
+        serviceId: null
+      };
     }
-    return null;
   }
 }
