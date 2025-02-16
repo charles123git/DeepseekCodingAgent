@@ -1,17 +1,18 @@
-");
-}
+import { Bot, AlertCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CodeBlock } from "@/components/code/CodeBlock";
+import type { Message } from "@shared/schema";
 
-function formatCode(codeBlock: string): string {
-  return codeBlock
-    .replace(/^```(\w+)?\n/, '')
-    .replace(/\n```$/, '')
-    .trim();
+interface ChatMessageProps {
+  message: Message;
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
   const isError = Boolean(message.metadata?.error);
-  const hasCode = hasCodeBlock(message.content);
+  const hasCode = message.content.includes("```");
+
+  // Split content into text and code blocks
   const parts = hasCode ? message.content.split(/(```[\s\S]*?```)/g) : [message.content];
 
   return (
@@ -37,4 +38,19 @@ export function ChatMessage({ message }: ChatMessageProps) {
         )}
       >
         {parts.map((part, index) => {
-          if (part.startsWith("```") && part.endsWith("
+          if (part.startsWith("```") && part.endsWith("```")) {
+            // Remove the backticks and language identifier
+            const code = part.slice(3, -3).replace(/^[a-z]+\n/, '');
+            return <CodeBlock key={index} code={code} />;
+          }
+          // Regular text content
+          return (
+            <p key={index} className="whitespace-pre-wrap break-words">
+              {part}
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
