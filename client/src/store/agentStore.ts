@@ -48,6 +48,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   cleanupSocket: () => {
     const { wsManager } = get();
     if (wsManager) {
+      log("Cleaning up WebSocket connection", { level: 'info' });
       wsManager.cleanup();
       set({ 
         wsManager: null, 
@@ -58,18 +59,24 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   initializeSocket: () => {
-    // Cleanup any existing socket first
+    const currentManager = get().wsManager;
+    if (currentManager?.getState() === 'connected') {
+      log("WebSocket already connected", { level: 'info' });
+      return;
+    }
+
+    // Clean up any existing connection
     get().cleanupSocket();
 
+    log("Initializing new WebSocket connection", { level: 'info' });
     const wsManager = createWebSocket({
-      maxRetries: 5,
+      maxRetries: 1, // Minimal retries to avoid connection spam
       initialRetryDelay: 1000,
-      maxRetryDelay: 30000,
+      maxRetryDelay: 2000, // Short retry delay
       healthCheckInterval: 30000,
       connectionTimeout: 5000,
     });
 
-    // Set up message handler
     wsManager.on('message', (data) => {
       try {
         get().addMessage(data);
@@ -86,16 +93,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }
     });
 
-    // Monitor connection state changes
     wsManager.on('stateChange', (state) => {
+      log("WebSocket state changed", { 
+        level: 'info',
+        context: { newState: state }
+      });
+
       set({ 
         isConnected: state === 'connected',
         connectionState: state
-      });
-
-      log("WebSocket connection state changed", { 
-        level: 'info',
-        context: { state }
       });
     });
 
@@ -110,7 +116,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       return;
     }
 
-    if (!isConnected) {
+    if (!isConnected || !wsManager) {
       onError("Not connected to server. Please try again in a moment.");
       log("Message send attempted while disconnected", { 
         level: 'warn',
@@ -127,8 +133,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         timestamp: new Date().toISOString(),
       };
 
-      wsManager?.send(JSON.stringify(message));
-
+      wsManager.send(JSON.stringify(message));
       log("Message sent successfully", { 
         level: 'debug',
         context: { messageContent: content }

@@ -1,5 +1,5 @@
 import { log, CircuitBreaker } from "@/lib/utils";
-import { EventEmitter } from "events";
+import { EventEmitter } from "./events";
 
 interface WebSocketConfig {
   maxRetries?: number;
@@ -10,9 +10,9 @@ interface WebSocketConfig {
 }
 
 const DEFAULT_CONFIG: Required<WebSocketConfig> = {
-  maxRetries: 5,
+  maxRetries: 1,
   initialRetryDelay: 1000,
-  maxRetryDelay: 30000,
+  maxRetryDelay: 2000,
   healthCheckInterval: 30000,
   connectionTimeout: 5000,
 };
@@ -28,24 +28,39 @@ export class WebSocketManager extends EventEmitter {
   private messageQueue: string[] = [];
   private readonly config: Required<WebSocketConfig>;
   private connectionState: 'connecting' | 'connected' | 'disconnected' = 'disconnected';
+  private isCleanedUp: boolean = false;
 
   constructor(config: WebSocketConfig = {}) {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.retryDelay = this.config.initialRetryDelay;
-    this.circuitBreaker = new CircuitBreaker();
+    this.circuitBreaker = new CircuitBreaker(3, 5000); // More conservative circuit breaker
   }
 
   connect(): void {
-    if (this.circuitBreaker.isOpen()) {
-      log("Circuit breaker is open, delaying connection attempt", { 
+    if (this.isCleanedUp) {
+      log("Connection attempt blocked - cleanup flag is set", { 
         level: 'warn',
-        context: { state: this.circuitBreaker.getState() } 
+        context: { cleaned: this.isCleanedUp }
+      });
+      return;
+    }
+
+    if (this.circuitBreaker.isOpen()) {
+      log("Connection attempt blocked - circuit breaker is open", { 
+        level: 'warn',
+        context: { state: this.circuitBreaker.getState() }
       });
       return;
     }
 
     if (this.socket?.readyState === WebSocket.OPEN) {
+      log("WebSocket already connected", { level: 'info' });
+      return;
+    }
+
+    if (this.socket?.readyState === WebSocket.CONNECTING) {
+      log("WebSocket connection already in progress", { level: 'info' });
       return;
     }
 
@@ -54,16 +69,21 @@ export class WebSocketManager extends EventEmitter {
   }
 
   private initializeConnection(): void {
+    if (this.isCleanedUp) return;
+
     try {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${protocol}//${window.location.host}/ws`;
 
+      log("Initializing WebSocket connection", { 
+        level: 'info',
+        context: { url: wsUrl }
+      });
+
       this.connectionState = 'connecting';
       this.socket = new WebSocket(wsUrl);
-
       this.setupConnectionHandlers();
       this.setupConnectionTimeout();
-      this.setupHealthCheck();
       this.emitStateChange();
     } catch (error) {
       this.handleConnectionError(error);
@@ -71,14 +91,20 @@ export class WebSocketManager extends EventEmitter {
   }
 
   private setupConnectionHandlers(): void {
-    if (!this.socket) return;
+    if (!this.socket || this.isCleanedUp) return;
 
     this.socket.onopen = () => {
+      if (this.isCleanedUp) {
+        this.socket?.close();
+        return;
+      }
+
       log("WebSocket connection established", { level: 'info' });
       this.connectionState = 'connected';
       this.circuitBreaker.recordSuccess();
       this.retryCount = 0;
       this.retryDelay = this.config.initialRetryDelay;
+      this.setupHealthCheck();
       this.flushMessageQueue();
       this.emitStateChange();
     };
@@ -92,6 +118,8 @@ export class WebSocketManager extends EventEmitter {
     };
 
     this.socket.onmessage = (event) => {
+      if (this.isCleanedUp) return;
+
       if (event.data === 'pong') {
         this.lastPongTime = Date.now();
         return;
@@ -101,23 +129,37 @@ export class WebSocketManager extends EventEmitter {
   }
 
   private setupConnectionTimeout(): void {
+    if (this.isCleanedUp) return;
+
     setTimeout(() => {
-      if (this.socket?.readyState !== WebSocket.OPEN) {
+      if (this.socket?.readyState === WebSocket.CONNECTING) {
         log("WebSocket connection timeout", { level: 'warn' });
-        this.socket?.close();
-        this.handleReconnection();
+        this.socket.close();
       }
     }, this.config.connectionTimeout);
   }
 
   private setupHealthCheck(): void {
+    if (this.isCleanedUp || this.healthCheckInterval) return;
+
     this.healthCheckInterval = window.setInterval(() => {
+      if (this.isCleanedUp) {
+        if (this.healthCheckInterval) {
+          clearInterval(this.healthCheckInterval);
+          this.healthCheckInterval = null;
+        }
+        return;
+      }
+
       if (this.socket?.readyState === WebSocket.OPEN) {
         this.socket.send('ping');
 
-        // Check if we've missed too many pongs
-        if (Date.now() - this.lastPongTime > this.config.healthCheckInterval * 2) {
-          log("Health check failed - no pong received", { level: 'warn' });
+        const timeSinceLastPong = Date.now() - this.lastPongTime;
+        if (timeSinceLastPong > this.config.healthCheckInterval * 2) {
+          log("Health check failed - no pong received", { 
+            level: 'warn',
+            context: { timeSinceLastPong }
+          });
           this.socket.close();
         }
       }
@@ -125,15 +167,25 @@ export class WebSocketManager extends EventEmitter {
   }
 
   private handleClose(event: CloseEvent): void {
-    this.connectionState = 'disconnected';
-    log(`WebSocket connection closed: ${event.code} ${event.reason}`, { 
+    log("WebSocket connection closed", { 
       level: 'info',
-      context: { code: event.code, reason: event.reason }
+      context: { 
+        code: event.code,
+        reason: event.reason || 'No reason provided',
+        wasClean: event.wasClean
+      }
     });
+
+    this.connectionState = 'disconnected';
     this.emitStateChange();
 
-    // Don't reconnect if it was a normal closure
-    if (event.code !== 1000) {
+    // Clear health check interval
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+
+    if (!event.wasClean && !this.isCleanedUp) {
       this.handleReconnection();
     }
   }
@@ -150,22 +202,26 @@ export class WebSocketManager extends EventEmitter {
   }
 
   private handleReconnection(): void {
-    if (this.retryCount >= this.config.maxRetries) {
-      log("Maximum WebSocket reconnection attempts reached", { level: 'error' });
+    if (this.retryCount >= this.config.maxRetries || this.isCleanedUp) {
+      log("Maximum WebSocket reconnection attempts reached or cleanup", { level: 'warn' });
       return;
     }
 
-    // Add jitter to prevent thundering herd
-    const jitter = Math.random() * 1000;
+    const jitter = Math.random() * 200; // Reduced jitter
     const delay = Math.min(this.retryDelay + jitter, this.config.maxRetryDelay);
+
+    log("Scheduling WebSocket reconnection", { 
+      level: 'info',
+      context: { 
+        attempt: this.retryCount + 1,
+        maxAttempts: this.config.maxRetries,
+        delay
+      }
+    });
 
     this.reconnectTimeout = window.setTimeout(() => {
       this.retryCount++;
-      this.retryDelay *= 2; // Exponential backoff
-      log(`Attempting WebSocket reconnection ${this.retryCount}/${this.config.maxRetries}`, { 
-        level: 'info',
-        context: { attempt: this.retryCount, delay }
-      });
+      this.retryDelay *= 2;
       this.connect();
     }, delay);
   }
@@ -174,12 +230,11 @@ export class WebSocketManager extends EventEmitter {
     try {
       const data = JSON.parse(event.data);
       this.emit('message', data);
-      log("Received message", { level: 'debug', context: { data } });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       log("Error parsing WebSocket message", { 
         level: 'error',
-        context: { error: errorMessage }
+        context: { error: errorMessage, rawData: event.data }
       });
     }
   }
@@ -191,38 +246,47 @@ export class WebSocketManager extends EventEmitter {
   send(message: string): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(message);
+      log("Message sent", { level: 'debug' });
     } else {
-      // Queue message if connection is not ready
       this.messageQueue.push(message);
       log("Message queued - connection not ready", { 
         level: 'warn',
-        context: { queueLength: this.messageQueue.length }
+        context: { 
+          queueLength: this.messageQueue.length,
+          connectionState: this.connectionState 
+        }
       });
     }
   }
 
   private flushMessageQueue(): void {
-    while (this.messageQueue.length > 0) {
+    while (this.messageQueue.length > 0 && this.socket?.readyState === WebSocket.OPEN) {
       const message = this.messageQueue.shift();
-      if (message && this.socket?.readyState === WebSocket.OPEN) {
+      if (message) {
         this.socket.send(message);
       }
     }
   }
 
   cleanup(): void {
+    log("Cleaning up WebSocket manager", { level: 'info' });
+    this.isCleanedUp = true;
+
     if (this.socket) {
       this.socket.close();
       this.socket = null;
     }
+
     if (this.reconnectTimeout) {
-      window.clearTimeout(this.reconnectTimeout);
+      clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+
     if (this.healthCheckInterval) {
-      window.clearInterval(this.healthCheckInterval);
+      clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
+
     this.connectionState = 'disconnected';
     this.emitStateChange();
     this.removeAllListeners();
@@ -233,7 +297,6 @@ export class WebSocketManager extends EventEmitter {
   }
 }
 
-// Export a factory function for creating WebSocket instances
 export function createWebSocket(config?: WebSocketConfig): WebSocketManager {
   const manager = new WebSocketManager(config);
   manager.connect();
