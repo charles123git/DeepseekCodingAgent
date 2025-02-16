@@ -48,21 +48,18 @@ export function ChatInterface() {
     inputRef.current.value = "";
 
     try {
-      const message = {
+      // Create the message object
+      const userMessage: Partial<Message> = {
         content,
         role: "user",
-        metadata: {
-          provider: "together" 
-        },
+        metadata: {},
         timestamp: new Date(),
-        agentId: null,
-        serviceId: null
       };
 
-      // Send through WebSocket first
-      await sendWebSocketMessage(message);
+      // Send through WebSocket for real-time updates
+      await sendWebSocketMessage(userMessage);
 
-      // Then through HTTP as backup
+      // Then through HTTP as backup and to ensure persistence
       await sendMessage(content, (errorMessage) => {
         toast({
           title: "Error",
