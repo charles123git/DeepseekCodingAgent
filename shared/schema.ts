@@ -34,14 +34,25 @@ export const services = pgTable("services", {
   isEnabled: boolean("is_enabled").notNull().default(true),
 });
 
-// Base schema for messages with validation rules
+// Client-side message schema for WebSocket communication
+export const webSocketMessageSchema = z.object({
+  content: z.string().min(1, "Content cannot be empty"),
+  role: z.enum(["user", "assistant", "system"]),
+  metadata: z.record(z.unknown()).default({}),
+  id: z.number().optional(),
+  timestamp: z.date().nullable().optional(),
+  agentId: z.string().nullable().optional(),
+  serviceId: z.string().nullable().optional(),
+});
+
+// Base schema for stored messages with validation rules
 const messageBaseSchema = z.object({
   content: z.string().min(1, "Content cannot be empty"),
   role: z.enum(["user", "assistant", "system"]),
   metadata: z.record(z.unknown()).default({}),
-  agentId: z.string().optional(),
-  serviceId: z.string().optional(),
-  timestamp: z.string().datetime().optional(), // Changed to accept ISO string timestamps
+  agentId: z.string().nullable(),
+  serviceId: z.string().nullable(),
+  timestamp: z.date().nullable(),
 });
 
 // Capability schema for agents
@@ -64,6 +75,7 @@ export const insertMessageSchema = createInsertSchema(messages).merge(messageBas
 export const insertAgentSchema = createInsertSchema(agents).merge(agentBaseSchema);
 export const insertServiceSchema = createInsertSchema(services);
 
+export type WebSocketMessage = z.infer<typeof webSocketMessageSchema>;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Agent = typeof agents.$inferSelect;

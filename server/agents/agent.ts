@@ -141,7 +141,9 @@ export class AgentManager {
             duration,
             agentRole: role
           },
+          timestamp: new Date(),
           agentId: role,
+          serviceId: this.currentProvider,
         };
       } catch (error) {
         console.error("Error in agent manager:", error);
@@ -154,7 +156,9 @@ export class AgentManager {
             timestamp: new Date().toISOString(),
             provider: this.currentProvider
           },
+          timestamp: new Date(),
           agentId: 'system',
+          serviceId: 'error',
         };
       }
     }

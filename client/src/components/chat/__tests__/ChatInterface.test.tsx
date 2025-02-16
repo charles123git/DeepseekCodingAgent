@@ -31,12 +31,10 @@ describe('ChatInterface', () => {
     // Reset Zustand store before each test
     useAgentStore.setState({
       messages: [],
-      socket: null,
       hasInsufficientBalance: false,
-      initializeSocket: vi.fn(),
-      sendMessage: vi.fn(),
       addMessage: vi.fn(),
       setMessages: vi.fn(),
+      sendMessage: vi.fn(),
     });
   });
 
@@ -48,14 +46,6 @@ describe('ChatInterface', () => {
 
     expect(input).toBeDefined();
     expect(button).toBeDefined();
-  });
-
-  it('should initialize WebSocket connection on component mount', () => {
-    const initializeSocket = vi.fn();
-    useAgentStore.setState({ initializeSocket });
-
-    render(<ChatInterface />, { wrapper: Wrapper });
-    expect(initializeSocket).toHaveBeenCalled();
   });
 
   it('should show loading state while sending message', async () => {
@@ -84,7 +74,7 @@ describe('ChatInterface', () => {
     expect(screen.getByText(/switching to alternative ai service/i)).toBeDefined();
   });
 
-  it('should show error toast when WebSocket is disconnected', async () => {
+  it('should show error toast when message fails', async () => {
     const mockToast = vi.fn();
     vi.mock('@/hooks/use-toast', () => ({
       useToast: () => ({
@@ -93,7 +83,7 @@ describe('ChatInterface', () => {
     }));
 
     const sendMessage = vi.fn().mockImplementation((_, onError) => {
-      onError('Not connected to server');
+      onError('Failed to send message');
     });
     useAgentStore.setState({ sendMessage });
 

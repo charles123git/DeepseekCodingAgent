@@ -1,20 +1,17 @@
 import { create } from "zustand";
-import { Message, Agent } from "@shared/schema";
+import { Message, WebSocketMessage } from "@shared/schema";
 import { log } from "@/lib/utils";
 
 interface AgentState {
   messages: Message[];
-  agents: Agent[];
   hasInsufficientBalance: boolean;
   addMessage: (message: Message) => void;
   setMessages: (messages: Message[]) => void;
-  setAgents: (agents: Agent[]) => void;
   sendMessage: (content: string, onError: (message: string) => void) => void;
 }
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   messages: [],
-  agents: [],
   hasInsufficientBalance: false,
 
   addMessage: (message) => {
@@ -31,10 +28,6 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set({ messages });
   },
 
-  setAgents: (agents) => {
-    set({ agents });
-  },
-
   sendMessage: (content: string, onError: (message: string) => void) => {
     const { hasInsufficientBalance } = get();
 
@@ -44,17 +37,19 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     }
 
     try {
-      // Create a properly formatted message object
-      const message = {
+      // Create a properly formatted WebSocket message
+      const message: WebSocketMessage = {
         content,
-        role: "user" as const,
+        role: "user",
         metadata: {},
+        timestamp: new Date(),
+        agentId: null,
+        serviceId: null
       };
 
       // The actual sending is now handled by the useWebSocket hook
-      // This store just manages the state
       set((state) => ({
-        messages: [...state.messages, message]
+        messages: [...state.messages, message as Message]
       }));
 
       log("Message queued successfully", { 
