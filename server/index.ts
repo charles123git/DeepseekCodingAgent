@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import { Server } from "socket.io";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -39,6 +40,52 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  // Initialize Socket.IO with CORS configuration
+  const io = new Server(server, {
+    path: '/ws',
+    cors: {
+      origin: process.env.NODE_ENV === 'production' 
+        ? false 
+        : ['http://localhost:5000', 'http://0.0.0.0:5000'],
+      methods: ['GET', 'POST']
+    }
+  });
+
+  // Handle Socket.IO connections
+  io.on('connection', (socket) => {
+    log(`Client connected: ${socket.id}`);
+
+    socket.on('message', (data) => {
+      try {
+        // Log received message
+        log('Received message from client', { 
+          level: 'debug',
+          context: { socketId: socket.id, data } 
+        });
+
+        // Broadcast message to all clients
+        io.emit('message', data);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        log('Error handling message', { 
+          level: 'error',
+          context: { error: errorMessage, socketId: socket.id } 
+        });
+      }
+    });
+
+    socket.on('disconnect', () => {
+      log(`Client disconnected: ${socket.id}`);
+    });
+
+    socket.on('error', (error) => {
+      log('Socket error', { 
+        level: 'error',
+        context: { error, socketId: socket.id } 
+      });
+    });
+  });
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
@@ -47,17 +94,12 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client
   const PORT = 5000;
   server.listen(PORT, "0.0.0.0", () => {
     log(`serving on port ${PORT}`);

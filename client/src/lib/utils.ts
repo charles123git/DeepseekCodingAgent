@@ -1,57 +1,42 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import winston from 'winston';
 
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-interface LogOptions {
-  level?: LogLevel;
-  context?: Record<string, unknown>;
-}
-
-const LOG_LEVELS: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
-};
-
-const CURRENT_LOG_LEVEL = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
+const logger = winston.createLogger({
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json(),
+    winston.format.colorize(),
+    winston.format.printf(({ timestamp, level, message, ...meta }) => {
+      return `${timestamp} [${level}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ''}`;
+    })
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  ]
+});
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function log(message: string, options: LogOptions = {}): void {
+export const log = (message: string, options: { level?: string; context?: Record<string, unknown> } = {}) => {
   const { level = 'info', context = {} } = options;
 
-  if (LOG_LEVELS[level] < LOG_LEVELS[CURRENT_LOG_LEVEL]) {
-    return;
-  }
-
-  const timestamp = new Date().toISOString();
-  const logData = {
-    timestamp,
+  logger.log({
     level,
     message,
-    ...context,
-  };
+    ...context
+  });
+};
 
-  switch (level) {
-    case 'error':
-      console.error(JSON.stringify(logData));
-      break;
-    case 'warn':
-      console.warn(JSON.stringify(logData));
-      break;
-    case 'debug':
-      console.debug(JSON.stringify(logData));
-      break;
-    default:
-      console.log(JSON.stringify(logData));
-  }
-}
-
-// Circuit breaker implementation
+// Circuit breaker implementation for handling service failures
 export class CircuitBreaker {
   private failures: number = 0;
   private lastFailureTime: number = 0;

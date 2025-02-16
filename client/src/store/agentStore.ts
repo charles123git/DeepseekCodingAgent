@@ -1,13 +1,13 @@
 import { create } from "zustand";
 import { Message, Agent } from "@shared/schema";
-import { createWebSocket } from "@/lib/socket";
+import { createSocket } from "@/lib/socket";
 import { log } from "@/lib/utils";
-import type { WebSocketManager } from "@/lib/socket";
+import type { SocketManager } from "@/lib/socket";
 
 interface AgentState {
   messages: Message[];
   agents: Agent[];
-  wsManager: WebSocketManager | null;
+  wsManager: SocketManager | null;
   hasInsufficientBalance: boolean;
   isConnected: boolean;
   connectionState: string;
@@ -69,7 +69,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     get().cleanupSocket();
 
     log("Initializing new WebSocket connection", { level: 'info' });
-    const wsManager = createWebSocket({
+    const wsManager = createSocket({
       maxRetries: 3,
       initialRetryDelay: 1000,
       maxRetryDelay: 5000,
