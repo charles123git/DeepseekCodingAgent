@@ -1,66 +1,64 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useCallback, useRef } from "react";
+import { io, Socket } from "socket.io-client";
 import { Message } from "@shared/schema";
 import { log } from "@/lib/utils";
 
 export function useWebSocket() {
   const queryClient = useQueryClient();
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+  const socketRef = useRef<Socket | null>(null);
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (socketRef.current?.connected) return;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    socketRef.current = io(window.location.origin, {
+      path: '/ws',
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+    });
 
-    wsRef.current = new WebSocket(wsUrl);
-
-    wsRef.current.onopen = () => {
+    socketRef.current.on('connect', () => {
       log('WebSocket connected', { level: 'info' });
-    };
+    });
 
-    wsRef.current.onmessage = (event) => {
-      try {
-        const message: Message = JSON.parse(event.data);
-        // Update messages in the query cache
-        queryClient.setQueryData(['messages'], (old: Message[] = []) => [...old, message]);
-      } catch (error) {
-        log('Failed to parse WebSocket message', { 
-          level: 'error', 
-          context: { error, data: event.data } 
-        });
-      }
-    };
+    socketRef.current.on('message', (message: Message) => {
+      // Update messages in the query cache
+      queryClient.setQueryData(['messages'], (old: Message[] = []) => [...old, message]);
+    });
 
-    wsRef.current.onerror = (error) => {
+    socketRef.current.on('error', (error: any) => {
       log('WebSocket error', { level: 'error', context: { error } });
-    };
+    });
 
-    wsRef.current.onclose = () => {
-      log('WebSocket disconnected', { level: 'info' });
-      // Attempt to reconnect after a delay
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, 3000);
-    };
+    socketRef.current.on('disconnect', (reason) => {
+      log('WebSocket disconnected', { level: 'info', context: { reason } });
+    });
+
+    socketRef.current.on('reconnect', (attemptNumber) => {
+      log('WebSocket reconnected', { level: 'info', context: { attemptNumber } });
+    });
+
+    socketRef.current.on('reconnect_error', (error) => {
+      log('WebSocket reconnection error', { level: 'error', context: { error } });
+    });
   }, [queryClient]);
 
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
   }, []);
 
   const sendMessage = useCallback((message: Message) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (!socketRef.current?.connected) {
       throw new Error('WebSocket not connected');
     }
-    wsRef.current.send(JSON.stringify(message));
+    socketRef.current.emit('message', message);
   }, []);
 
   useEffect(() => {
@@ -72,6 +70,6 @@ export function useWebSocket() {
     sendMessage,
     reconnect: connect,
     disconnect,
-    isConnected: wsRef.current?.readyState === WebSocket.OPEN
+    isConnected: socketRef.current?.connected ?? false
   };
 }
