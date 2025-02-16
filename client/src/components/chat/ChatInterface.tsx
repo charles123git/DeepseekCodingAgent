@@ -56,37 +56,35 @@ export function ChatInterface() {
 
   return (
     <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full">
-      {hasInsufficientBalance && (
-        <Alert className="mb-4 bg-gray-50 border-gray-200">
-          <AlertCircle className="h-4 w-4 text-gray-500" />
-          <AlertDescription className="space-y-2">
-            <p>
-              The AI service is temporarily paused.
-            </p>
-            <div className="flex gap-2 text-sm text-gray-600">
-              <a
-                href="https://platform.deepseek.com/top_up"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 underline"
-              >
-                Check service status
-              </a>
-              <span>•</span>
-              <a
-                href="https://help.deepseek.com/issues/service-maintenance"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 underline"
-              >
-                Technical details
-              </a>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-4">
+          {hasInsufficientBalance && (
+            <div className="px-4 py-3 mb-4 text-sm bg-background border rounded-lg">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                <p>The AI service is temporarily paused.</p>
+              </div>
+              <div className="mt-2 flex gap-2 text-xs">
+                <a
+                  href="https://platform.deepseek.com/top_up"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Check service status
+                </a>
+                <span className="text-muted-foreground">•</span>
+                <a
+                  href="https://help.deepseek.com/issues/service-maintenance"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Technical details
+                </a>
+              </div>
+            </div>
+          )}
           {messages.map((message, index) => (
             <ChatMessage key={message.id ?? index} message={message} />
           ))}
@@ -102,7 +100,7 @@ export function ChatInterface() {
           <Button 
             type="submit" 
             variant={hasInsufficientBalance ? "outline" : "default"}
-            className={hasInsufficientBalance ? "text-gray-400" : ""}
+            className={hasInsufficientBalance ? "text-muted-foreground" : ""}
           >
             <Send className="h-4 w-4" />
           </Button>

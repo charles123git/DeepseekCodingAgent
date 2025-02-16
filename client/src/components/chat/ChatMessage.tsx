@@ -16,7 +16,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
       className={cn(
         "p-4 max-w-[80%]",
         isUser ? "ml-auto bg-primary text-primary-foreground" : "mr-auto",
-        isError && "border-red-500 bg-red-50 dark:bg-red-900/10"
+        isError && "border-gray-200 bg-gray-50 dark:bg-gray-900/10"
       )}
     >
       <div className="flex flex-col gap-1">
@@ -24,11 +24,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <span className="text-sm font-medium">
             {isUser ? "You" : message.agentId || "Assistant"}
           </span>
-          {isError && <AlertCircle className="h-4 w-4 text-red-500" />}
+          {isError && <AlertCircle className="h-4 w-4 text-gray-500" />}
         </div>
         <div className={cn(
           "whitespace-pre-wrap",
-          isError && "text-red-800 dark:text-red-200"
+          isError && "text-gray-600 dark:text-gray-300"
         )}>
           {message.content}
         </div>
