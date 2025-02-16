@@ -8,6 +8,8 @@ import { Send, AlertCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import type { Message } from "@shared/schema";
+import cn from 'classnames';
+
 
 export function ChatInterface() {
   const { toast } = useToast();
@@ -16,7 +18,6 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch initial messages
   const { data: initialMessages } = useQuery<Message[]>({
     queryKey: ["/api/messages"],
   });
@@ -37,7 +38,6 @@ export function ChatInterface() {
     }
   };
 
-  // Auto-scroll when messages change
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -64,22 +64,23 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full bg-background/95">
-      <ScrollArea className="flex-1 px-4">
-        <div className="space-y-4 max-w-4xl mx-auto py-2">
-          {hasInsufficientBalance && (
-            <div className="px-3 py-2 mb-2 text-sm bg-background/50 border border-border/50 rounded-lg">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <AlertCircle className="h-4 w-4" />
-                <p>Switching to alternative AI service...</p>
-              </div>
-            </div>
-          )}
+    <div className="h-[calc(100vh-2rem)] flex flex-col bg-background/95">
+      {hasInsufficientBalance && (
+        <div className="px-3 py-2 text-sm bg-background/50 border-b border-border/50">
+          <div className="flex items-center gap-2 text-muted-foreground max-w-4xl mx-auto">
+            <AlertCircle className="h-4 w-4" />
+            <p>Switching to alternative AI service...</p>
+          </div>
+        </div>
+      )}
+
+      <ScrollArea className="flex-1">
+        <div className="space-y-3 max-w-4xl mx-auto py-4 px-3">
           {messages.map((message, index) => (
             <ChatMessage key={message.id ?? index} message={message} />
           ))}
           {isLoading && (
-            <div className="flex items-center gap-2 text-muted-foreground">
+            <div className="flex items-center gap-2 text-muted-foreground px-2">
               <Loader2 className="h-4 w-4 animate-spin" />
               <p className="text-sm">AI is thinking...</p>
             </div>
@@ -87,7 +88,8 @@ export function ChatInterface() {
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
-      <form onSubmit={handleSubmit} className="p-3 border-t border-border/50 bg-background/95 backdrop-blur-sm">
+
+      <form onSubmit={handleSubmit} className="p-2 border-t border-border/50 bg-background/95 backdrop-blur-sm">
         <div className="flex gap-2 max-w-4xl mx-auto">
           <Input
             ref={inputRef}
@@ -99,9 +101,10 @@ export function ChatInterface() {
             type="submit"
             disabled={isLoading}
             variant={hasInsufficientBalance ? "outline" : "default"}
-            className={`${hasInsufficientBalance ? "text-muted-foreground" : ""} ${
-              isLoading ? "cursor-not-allowed opacity-50" : ""
-            }`}
+            className={cn(
+              hasInsufficientBalance && "text-muted-foreground",
+              isLoading && "cursor-not-allowed opacity-50"
+            )}
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
