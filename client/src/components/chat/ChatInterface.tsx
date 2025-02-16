@@ -51,7 +51,9 @@ export function ChatInterface() {
       const message = {
         content,
         role: "user",
-        metadata: {},
+        metadata: {
+          provider: "together" 
+        },
         timestamp: new Date(),
         agentId: null,
         serviceId: null
