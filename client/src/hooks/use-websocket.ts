@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
-import type { Message, InsertMessage } from "@shared/schema";
+import type { Message, WebSocketMessage } from "@shared/schema";
 import { log } from "@/lib/utils";
 
 export function useWebSocket() {
@@ -28,7 +28,6 @@ export function useWebSocket() {
     });
 
     socketRef.current.on('message', (message: Message) => {
-      log('Received message:', message);
       queryClient.setQueryData<Message[]>(['/api/messages'], (old = []) => {
         // Prevent duplicate messages by checking ID
         if (old.some(m => m.id === message.id)) {
@@ -65,7 +64,7 @@ export function useWebSocket() {
     }
   }, []);
 
-  const sendMessage = useCallback(async (message: Partial<InsertMessage>) => {
+  const sendMessage = useCallback(async (message: Partial<WebSocketMessage>) => {
     if (!socketRef.current?.connected) {
       await new Promise<void>((resolve) => {
         if (socketRef.current?.connected) {

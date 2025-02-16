@@ -2,6 +2,9 @@ import { pgTable, text, serial, jsonb, timestamp, boolean, integer } from "drizz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Core message role schema to ensure consistency
+const messageRoleSchema = z.enum(["user", "assistant", "system"]);
+
 export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
@@ -12,6 +15,26 @@ export const messages = pgTable("messages", {
   serviceId: text("service_id"),
 });
 
+// Base schema for stored messages with validation rules
+export const messageBaseSchema = z.object({
+  content: z.string().min(1, "Content cannot be empty"),
+  role: messageRoleSchema,
+  metadata: z.record(z.unknown()).default({}),
+  timestamp: z.date().nullable(),
+  agentId: z.string().nullable(),
+  serviceId: z.string().nullable(),
+});
+
+// Client-side message schema for WebSocket communication
+export const webSocketMessageSchema = messageBaseSchema;
+
+export const insertMessageSchema = createInsertSchema(messages).merge(messageBaseSchema);
+
+export type WebSocketMessage = z.infer<typeof webSocketMessageSchema>;
+export type Message = typeof messages.$inferSelect;
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+// Keep other schemas unchanged
 export const agents = pgTable("agents", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -34,27 +57,6 @@ export const services = pgTable("services", {
   isEnabled: boolean("is_enabled").notNull().default(true),
 });
 
-// Client-side message schema for WebSocket communication
-export const webSocketMessageSchema = z.object({
-  content: z.string().min(1, "Content cannot be empty"),
-  role: z.enum(["user", "assistant", "system"]),
-  metadata: z.record(z.unknown()).default({}),
-  id: z.number().optional(),
-  timestamp: z.date().nullable().optional(),
-  agentId: z.string().nullable().optional(),
-  serviceId: z.string().nullable().optional(),
-});
-
-// Base schema for stored messages with validation rules
-const messageBaseSchema = z.object({
-  content: z.string().min(1, "Content cannot be empty"),
-  role: z.enum(["user", "assistant", "system"]),
-  metadata: z.record(z.unknown()).default({}),
-  agentId: z.string().nullable(),
-  serviceId: z.string().nullable(),
-  timestamp: z.date().nullable(),
-});
-
 // Capability schema for agents
 const capabilitySchema = z.object({
   name: z.string().min(1, "Capability name cannot be empty"),
@@ -71,13 +73,9 @@ const agentBaseSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
-export const insertMessageSchema = createInsertSchema(messages).merge(messageBaseSchema);
 export const insertAgentSchema = createInsertSchema(agents).merge(agentBaseSchema);
 export const insertServiceSchema = createInsertSchema(services);
 
-export type WebSocketMessage = z.infer<typeof webSocketMessageSchema>;
-export type Message = typeof messages.$inferSelect;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Agent = typeof agents.$inferSelect;
 export type InsertAgent = z.infer<typeof insertAgentSchema>;
 export type Service = typeof services.$inferSelect;

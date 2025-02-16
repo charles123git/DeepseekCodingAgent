@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { Message } from "@shared/schema";
-import cn from 'classnames';
+import { cn } from "@/lib/utils";
 
 export function ChatInterface() {
   const { toast } = useToast();
@@ -52,14 +52,12 @@ export function ChatInterface() {
         throw new Error('WebSocket not connected');
       }
 
-      const message = {
+      await sendWebSocketMessage({
         content,
-        role: "user",
+        role: "user" as const,
         metadata: {},
         timestamp: new Date()
-      };
-
-      await sendWebSocketMessage(message);
+      });
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -85,8 +83,8 @@ export function ChatInterface() {
 
       <ScrollArea className="flex-1">
         <div className="space-y-3 max-w-4xl mx-auto py-4 px-3">
-          {messages.map((message, index) => (
-            <ChatMessage key={message.id ?? index} message={message} />
+          {messages.map((message) => (
+            <ChatMessage key={message.id ?? String(message.timestamp)} message={message} />
           ))}
           {isLoading && (
             <div className="flex items-center gap-2 text-muted-foreground px-2">
