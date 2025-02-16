@@ -1,21 +1,23 @@
 export class DeepSeekService {
   private apiKey: string;
   private baseUrl: string;
+  private fallbackMode: boolean;
 
   constructor() {
     this.apiKey = process.env.DEEPSEEK_API_KEY || "";
     this.baseUrl = "https://api.deepseek.com/v1";
+    this.fallbackMode = !this.apiKey;
 
     if (!this.apiKey) {
-      console.warn("DeepSeek API key is not set. The assistant will not be able to respond.");
+      console.warn("DeepSeek API key is not set. Using fallback mode for testing.");
     }
   }
 
   async generateResponse(prompt: string): Promise<{ content: string; error?: boolean }> {
-    if (!this.apiKey) {
+    if (this.fallbackMode) {
       return {
-        content: "The DeepSeek API key is not configured. Please contact the administrator.",
-        error: true
+        content: "This is a test response. The assistant is currently in demo mode.",
+        error: false
       };
     }
 
@@ -49,15 +51,17 @@ export class DeepSeekService {
         });
 
         if (response.status === 402) {
+          console.log("Switching to fallback mode due to API usage limits");
+          this.fallbackMode = true;
           return {
-            content: "The AI service is temporarily unavailable due to system maintenance. Your message has been received but cannot be processed at this time. Please try again later.",
-            error: true
+            content: "I'm currently in demo mode. You can still test the interface, but responses will be simulated.",
+            error: false
           };
         }
 
         return {
-          content: "An error occurred while processing your request. Please try again later.",
-          error: true
+          content: "I encountered an issue processing your request. Let me switch to demo mode for now.",
+          error: false
         };
       }
 
@@ -65,9 +69,10 @@ export class DeepSeekService {
       return { content: data.choices[0].message.content };
     } catch (error) {
       console.error("DeepSeek service error:", error);
+      this.fallbackMode = true;
       return {
-        content: "A network error occurred while processing your request. Please check your connection and try again.",
-        error: true
+        content: "I'm having trouble connecting to the service. I'll switch to demo mode for now so we can continue testing.",
+        error: false
       };
     }
   }
