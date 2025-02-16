@@ -1,10 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAgentStore } from "@/store/agentStore";
 import { ChatMessage } from "./ChatMessage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, AlertCircle } from "lucide-react";
+import { Send, AlertCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import type { Message } from "@shared/schema";
@@ -14,6 +14,7 @@ export function ChatInterface() {
   const { messages, sendMessage, initializeSocket, setMessages, hasInsufficientBalance } = useAgentStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Fetch initial messages
   const { data: initialMessages } = useQuery<Message[]>({
@@ -36,21 +37,25 @@ export function ChatInterface() {
     }
   }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputRef.current?.value.trim()) return;
+    if (!inputRef.current?.value.trim() || isLoading) return;
 
-    sendMessage(
-      inputRef.current.value,
-      (errorMessage) => {
+    setIsLoading(true);
+    const content = inputRef.current.value;
+    inputRef.current.value = "";
+
+    try {
+      await sendMessage(content, (errorMessage) => {
         toast({
           title: "Error",
           description: errorMessage,
           variant: "destructive",
         });
-      }
-    );
-    inputRef.current.value = "";
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -61,47 +66,42 @@ export function ChatInterface() {
             <div className="px-3 py-2 mb-2 text-sm bg-background/50 border border-border/50 rounded-lg">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <AlertCircle className="h-4 w-4" />
-                <p>The AI service is temporarily paused.</p>
-              </div>
-              <div className="mt-2 flex gap-2 text-xs">
-                <a
-                  href="https://platform.deepseek.com/top_up"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Check service status
-                </a>
-                <span className="text-muted-foreground">•</span>
-                <a
-                  href="https://help.deepseek.com/issues/service-maintenance"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Technical details
-                </a>
+                <p>Switching to alternative AI service...</p>
               </div>
             </div>
           )}
           {messages.map((message, index) => (
             <ChatMessage key={message.id ?? index} message={message} />
           ))}
+          {isLoading && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <p className="text-sm">AI is thinking...</p>
+            </div>
+          )}
         </div>
       </ScrollArea>
       <form onSubmit={handleSubmit} className="p-3 border-t border-border/50 bg-background/95 backdrop-blur-sm">
         <div className="flex gap-2 max-w-4xl mx-auto">
           <Input
             ref={inputRef}
-            placeholder={hasInsufficientBalance ? "Service temporarily unavailable" : "Type your message..."}
+            placeholder={isLoading ? "Waiting for response..." : "Type your message..."}
+            disabled={isLoading}
             className="flex-1 bg-background/50"
           />
           <Button
             type="submit"
+            disabled={isLoading}
             variant={hasInsufficientBalance ? "outline" : "default"}
-            className={hasInsufficientBalance ? "text-muted-foreground" : ""}
+            className={`${hasInsufficientBalance ? "text-muted-foreground" : ""} ${
+              isLoading ? "cursor-not-allowed opacity-50" : ""
+            }`}
           >
-            <Send className="h-4 w-4" />
+            {isLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </form>
