@@ -11,9 +11,12 @@ export class DeepSeekService {
     }
   }
 
-  async generateResponse(prompt: string): Promise<string> {
+  async generateResponse(prompt: string): Promise<{ content: string; error?: boolean }> {
     if (!this.apiKey) {
-      return "I cannot respond at the moment as the API key is not configured. Please contact the administrator.";
+      return {
+        content: "The DeepSeek API key is not configured. Please contact the administrator.",
+        error: true
+      };
     }
 
     try {
@@ -38,20 +41,34 @@ export class DeepSeekService {
       });
 
       if (!response.ok) {
-        const errorData = await response.text();
+        const errorData = await response.json();
         console.error("DeepSeek API error:", {
           status: response.status,
           statusText: response.statusText,
           error: errorData,
         });
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
+
+        if (response.status === 402) {
+          return {
+            content: "The DeepSeek API account has insufficient balance. Please contact the administrator to resolve this issue.",
+            error: true
+          };
+        }
+
+        return {
+          content: "An error occurred while processing your request. Please try again later.",
+          error: true
+        };
       }
 
       const data = await response.json();
-      return data.choices[0].message.content;
+      return { content: data.choices[0].message.content };
     } catch (error) {
       console.error("DeepSeek service error:", error);
-      return "I encountered an error while processing your request. Please try again in a moment.";
+      return {
+        content: "A network error occurred while processing your request. Please check your connection and try again.",
+        error: true
+      };
     }
   }
 }

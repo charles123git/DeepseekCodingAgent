@@ -16,11 +16,12 @@ export class AgentManager {
       try {
         const response = await this.deepseek.generateResponse(message.content);
         return {
-          content: response,
+          content: response.content,
           role: "assistant",
           metadata: {
             model: "deepseek-coder",
             timestamp: new Date().toISOString(),
+            error: response.error || false,
           },
           agentId: "deepseek",
         };
