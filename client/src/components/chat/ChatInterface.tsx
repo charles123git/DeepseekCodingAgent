@@ -13,7 +13,7 @@ export function ChatInterface() {
   const { toast } = useToast();
   const { messages, sendMessage, initializeSocket, setMessages, hasInsufficientBalance } = useAgentStore();
   const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch initial messages
@@ -31,10 +31,15 @@ export function ChatInterface() {
     initializeSocket();
   }, [initializeSocket]);
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
+  };
+
+  // Auto-scroll when messages change
+  useEffect(() => {
+    scrollToBottom();
   }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -60,7 +65,7 @@ export function ChatInterface() {
 
   return (
     <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full bg-background/95">
-      <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 px-4">
         <div className="space-y-4 max-w-4xl mx-auto py-2">
           {hasInsufficientBalance && (
             <div className="px-3 py-2 mb-2 text-sm bg-background/50 border border-border/50 rounded-lg">
@@ -79,6 +84,7 @@ export function ChatInterface() {
               <p className="text-sm">AI is thinking...</p>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
       <form onSubmit={handleSubmit} className="p-3 border-t border-border/50 bg-background/95 backdrop-blur-sm">
