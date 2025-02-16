@@ -1,52 +1,64 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import { Message } from "@shared/schema";
 import { log } from "@/lib/utils";
 
 export function useWebSocket() {
   const queryClient = useQueryClient();
-  let socket: Socket | null = null;
+  const socketRef = useRef<Socket | null>(null);
 
   const connect = useCallback(() => {
-    if (socket?.connected) return;
+    if (socketRef.current?.connected) return;
 
-    socket = io(window.location.origin, {
+    socketRef.current = io(window.location.origin, {
       path: '/ws',
       transports: ['websocket', 'polling'],
       withCredentials: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
     });
 
-    socket.on('connect', () => {
+    socketRef.current.on('connect', () => {
       log('WebSocket connected', { level: 'info' });
     });
 
-    socket.on('message', (message: Message) => {
+    socketRef.current.on('message', (message: Message) => {
       // Update messages in the query cache
       queryClient.setQueryData(['messages'], (old: Message[] = []) => [...old, message]);
     });
 
-    socket.on('error', (error: any) => {
+    socketRef.current.on('error', (error: any) => {
       log('WebSocket error', { level: 'error', context: { error } });
     });
 
-    socket.on('disconnect', (reason) => {
+    socketRef.current.on('disconnect', (reason) => {
       log('WebSocket disconnected', { level: 'info', context: { reason } });
+    });
+
+    socketRef.current.on('reconnect', (attemptNumber) => {
+      log('WebSocket reconnected', { level: 'info', context: { attemptNumber } });
+    });
+
+    socketRef.current.on('reconnect_error', (error) => {
+      log('WebSocket reconnection error', { level: 'error', context: { error } });
     });
   }, [queryClient]);
 
   const disconnect = useCallback(() => {
-    if (socket) {
-      socket.disconnect();
-      socket = null;
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
   }, []);
 
   const sendMessage = useCallback((message: Message) => {
-    if (!socket?.connected) {
+    if (!socketRef.current?.connected) {
       throw new Error('WebSocket not connected');
     }
-    socket.emit('message', message);
+    socketRef.current.emit('message', message);
   }, []);
 
   useEffect(() => {
@@ -58,5 +70,6 @@ export function useWebSocket() {
     sendMessage,
     reconnect: connect,
     disconnect,
+    isConnected: socketRef.current?.connected ?? false
   };
 }

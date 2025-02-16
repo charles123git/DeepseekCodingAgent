@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Send, AlertCircle, Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
+import { useWebSocket } from "@/hooks/use-websocket";
 import type { Message } from "@shared/schema";
 import cn from 'classnames';
 
-
 export function ChatInterface() {
   const { toast } = useToast();
-  const { messages, sendMessage, initializeSocket, setMessages, hasInsufficientBalance } = useAgentStore();
+  const { messages, sendMessage, setMessages, hasInsufficientBalance } = useAgentStore();
+  const { sendMessage: sendWebSocketMessage } = useWebSocket();
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -27,10 +28,6 @@ export function ChatInterface() {
       setMessages(initialMessages);
     }
   }, [initialMessages, setMessages]);
-
-  useEffect(() => {
-    initializeSocket();
-  }, [initializeSocket]);
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -51,12 +48,25 @@ export function ChatInterface() {
     inputRef.current.value = "";
 
     try {
+      const message = {
+        content,
+        role: "user" as const,
+        metadata: {},
+      };
+
+      await sendWebSocketMessage(message);
       await sendMessage(content, (errorMessage) => {
         toast({
           title: "Error",
           description: errorMessage,
           variant: "destructive",
         });
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to send message. Please try again.",
+        variant: "destructive",
       });
     } finally {
       setIsLoading(false);
