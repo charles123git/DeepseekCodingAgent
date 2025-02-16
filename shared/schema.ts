@@ -6,7 +6,7 @@ export const messages = pgTable("messages", {
   id: serial("id").primaryKey(),
   content: text("content").notNull(),
   role: text("role").notNull(),
-  metadata: jsonb("metadata").default({}),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   timestamp: timestamp("timestamp").defaultNow(),
   agentId: text("agent_id"),
 });
@@ -15,7 +15,7 @@ export const agents = pgTable("agents", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   role: text("role").notNull(),
-  capabilities: jsonb("capabilities").default([]),
+  capabilities: jsonb("capabilities").$type<Record<string, unknown>[]>().notNull().default([]),
 });
 
 export const insertMessageSchema = createInsertSchema(messages).pick({
