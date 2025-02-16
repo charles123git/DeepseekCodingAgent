@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createWebSocket } from '../socket';
 
 describe('WebSocket Client', () => {
@@ -15,7 +15,7 @@ describe('WebSocket Client', () => {
     };
 
     // Mock WebSocket constructor
-    global.WebSocket = vi.fn().mockImplementation(() => mockWebSocket);
+    global.WebSocket = vi.fn(() => mockWebSocket) as any;
 
     // Mock location object
     delete (global as any).location;
@@ -30,12 +30,12 @@ describe('WebSocket Client', () => {
     global.location = originalLocation;
   });
 
-  it('should create websocket with correct URL', () => {
+  it('should create websocket with correct ws:// URL when using HTTP', () => {
     createWebSocket();
     expect(WebSocket).toHaveBeenCalledWith('ws://localhost:5000/ws');
   });
 
-  it('should use wss protocol when on https', () => {
+  it('should create websocket with correct wss:// URL when using HTTPS', () => {
     global.location = {
       protocol: 'https:',
       host: 'localhost:5000',
@@ -45,27 +45,22 @@ describe('WebSocket Client', () => {
     expect(WebSocket).toHaveBeenCalledWith('wss://localhost:5000/ws');
   });
 
-  it('should implement connection timeout', () => {
+  it('should close connection when timeout occurs before connection is established', () => {
     vi.useFakeTimers();
-    const socket = createWebSocket();
-    
-    // Simulate connection timeout
+    createWebSocket();
+
     vi.advanceTimersByTime(5000);
-    
     expect(mockWebSocket.close).toHaveBeenCalled();
     vi.useRealTimers();
   });
 
-  it('should clear timeout when connection is successful', () => {
+  it('should not close connection when successfully connected within timeout period', () => {
     vi.useFakeTimers();
-    const socket = createWebSocket();
-    
-    // Simulate successful connection
+    createWebSocket();
+
     mockWebSocket.onopen();
-    
-    // Advance time past timeout
     vi.advanceTimersByTime(5000);
-    
+
     expect(mockWebSocket.close).not.toHaveBeenCalled();
     vi.useRealTimers();
   });

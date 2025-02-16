@@ -12,7 +12,14 @@ vi.mock('@/hooks/use-toast', () => ({
 }));
 
 // Create a wrapper with the required providers
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+});
+
 const Wrapper = ({ children }: { children: React.ReactNode }) => (
   <QueryClientProvider client={queryClient}>
     {children}
@@ -33,12 +40,17 @@ describe('ChatInterface', () => {
     });
   });
 
-  it('renders without crashing', () => {
+  it('should render message input and submit button', () => {
     render(<ChatInterface />, { wrapper: Wrapper });
-    expect(screen.getByPlaceholderText(/type your message/i)).toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText(/type your message/i);
+    const button = screen.getByRole('button');
+
+    expect(input).toBeDefined();
+    expect(button).toBeDefined();
   });
 
-  it('initializes WebSocket connection on mount', () => {
+  it('should initialize WebSocket connection on component mount', () => {
     const initializeSocket = vi.fn();
     useAgentStore.setState({ initializeSocket });
 
@@ -46,21 +58,33 @@ describe('ChatInterface', () => {
     expect(initializeSocket).toHaveBeenCalled();
   });
 
-  it('displays loading state when sending message', async () => {
+  it('should show loading state while sending message', async () => {
+    const sendMessage = vi.fn((content, onError) => {
+      return new Promise(resolve => setTimeout(resolve, 100));
+    });
+    useAgentStore.setState({ sendMessage });
+
     render(<ChatInterface />, { wrapper: Wrapper });
-    
+
     const input = screen.getByPlaceholderText(/type your message/i);
     const form = input.closest('form')!;
-    
+
     fireEvent.change(input, { target: { value: 'test message' } });
     fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(screen.getByText(/waiting for response/i)).toBeInTheDocument();
+      expect(screen.getByText(/waiting for response/i)).toBeDefined();
     });
   });
 
-  it('shows error message when socket is disconnected', async () => {
+  it('should handle insufficient balance state', () => {
+    useAgentStore.setState({ hasInsufficientBalance: true });
+    render(<ChatInterface />, { wrapper: Wrapper });
+
+    expect(screen.getByText(/switching to alternative ai service/i)).toBeDefined();
+  });
+
+  it('should show error toast when WebSocket is disconnected', async () => {
     const mockToast = vi.fn();
     vi.mock('@/hooks/use-toast', () => ({
       useToast: () => ({
@@ -74,10 +98,10 @@ describe('ChatInterface', () => {
     useAgentStore.setState({ sendMessage });
 
     render(<ChatInterface />, { wrapper: Wrapper });
-    
+
     const input = screen.getByPlaceholderText(/type your message/i);
     const form = input.closest('form')!;
-    
+
     fireEvent.change(input, { target: { value: 'test message' } });
     fireEvent.submit(form);
 

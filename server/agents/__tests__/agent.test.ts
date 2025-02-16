@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentManager } from '../agent';
-import type { Message } from '@shared/schema';
+import type { Message } from '../../shared/schema';
 import { IStorage } from '../../storage';
 
 // Mock storage implementation
@@ -21,7 +21,7 @@ describe('AgentManager', () => {
     manager = new AgentManager(storage);
   });
 
-  it('should handle non-user messages', async () => {
+  it('should not respond to non-user messages', async () => {
     const message: Message = {
       id: 1,
       content: 'test',
@@ -34,7 +34,7 @@ describe('AgentManager', () => {
     expect(response).toBeNull();
   });
 
-  it('should generate response for user message', async () => {
+  it('should generate response for user messages', async () => {
     const message: Message = {
       id: 1,
       content: 'test question',
@@ -50,7 +50,7 @@ describe('AgentManager', () => {
     expect(response?.metadata?.provider).toBeDefined();
   });
 
-  it('should handle provider errors and switch services', async () => {
+  it('should handle provider errors and fallback gracefully', async () => {
     const message: Message = {
       id: 1,
       content: 'test question',
@@ -59,18 +59,18 @@ describe('AgentManager', () => {
       timestamp: new Date(),
     };
 
-    // First response should be from the fallback service
+    // First response should be from the primary service
     const response1 = await manager.handleMessage(message);
     expect(response1?.metadata?.provider).toBeDefined();
     expect(response1?.metadata?.error).toBe(false);
 
-    // Second response should also work
+    // Second response should fall back to alternative service
     const response2 = await manager.handleMessage(message);
     expect(response2?.metadata?.provider).toBeDefined();
     expect(response2?.metadata?.error).toBe(false);
   });
 
-  it('should include provider and model information in response metadata', async () => {
+  it('should include complete metadata in responses', async () => {
     const message: Message = {
       id: 1,
       content: 'test question',

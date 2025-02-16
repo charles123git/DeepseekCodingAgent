@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebSocket } from 'ws';
 import { Server } from 'http';
 import express from 'express';
-import { registerRoutes } from '../routes';
-import { insertMessageSchema } from '@shared/schema';
+import { registerRoutes } from '../../routes';
 
 describe('WebSocket Server', () => {
   let server: Server;
@@ -17,75 +16,83 @@ describe('WebSocket Server', () => {
     server.listen(port);
   });
 
-  afterEach((done) => {
+  afterEach(() => {
     if (wss) {
       wss.close();
     }
-    server.close(done);
+    server.close();
   });
 
-  it('should establish WebSocket connection', (done) => {
-    wss = new WebSocket(url);
-    
-    wss.on('open', () => {
-      expect(wss.readyState).toBe(WebSocket.OPEN);
-      done();
-    });
-  });
+  it('should establish WebSocket connection successfully', () => {
+    return new Promise<void>((resolve) => {
+      wss = new WebSocket(url);
 
-  it('should broadcast messages to all clients', (done) => {
-    const ws1 = new WebSocket(url);
-    const ws2 = new WebSocket(url);
-    
-    let connected = 0;
-    const message = {
-      content: 'test message',
-      role: 'user',
-      metadata: {},
-    };
-
-    const onOpen = () => {
-      connected++;
-      if (connected === 2) {
-        ws1.send(JSON.stringify(message));
-      }
-    };
-
-    ws1.on('open', onOpen);
-    ws2.on('open', onOpen);
-
-    ws2.on('message', (data) => {
-      const received = JSON.parse(data.toString());
-      expect(received.content).toBe(message.content);
-      expect(received.role).toBe(message.role);
-      done();
+      wss.on('open', () => {
+        expect(wss.readyState).toBe(WebSocket.OPEN);
+        resolve();
+      });
     });
   });
 
-  it('should validate message format', (done) => {
-    wss = new WebSocket(url);
-    
-    wss.on('open', () => {
-      wss.send(JSON.stringify({ invalid: 'message' }));
-    });
+  it('should broadcast messages to all connected clients', () => {
+    return new Promise<void>((resolve) => {
+      const ws1 = new WebSocket(url);
+      const ws2 = new WebSocket(url);
 
-    wss.on('message', (data) => {
-      const received = JSON.parse(data.toString());
-      expect(received.metadata.error).toBe(true);
-      done();
+      let connected = 0;
+      const testMessage = {
+        content: 'test message',
+        role: 'user',
+        metadata: {},
+      };
+
+      const onOpen = () => {
+        connected++;
+        if (connected === 2) {
+          ws1.send(JSON.stringify(testMessage));
+        }
+      };
+
+      ws1.on('open', onOpen);
+      ws2.on('open', onOpen);
+
+      ws2.on('message', (data) => {
+        const received = JSON.parse(data.toString());
+        expect(received.content).toBe(testMessage.content);
+        expect(received.role).toBe(testMessage.role);
+        resolve();
+      });
     });
   });
 
-  it('should handle connection closure gracefully', (done) => {
-    wss = new WebSocket(url);
-    
-    wss.on('open', () => {
-      wss.close();
-    });
+  it('should reject invalid message format with error response', () => {
+    return new Promise<void>((resolve) => {
+      wss = new WebSocket(url);
 
-    wss.on('close', () => {
-      expect(wss.readyState).toBe(WebSocket.CLOSED);
-      done();
+      wss.on('open', () => {
+        wss.send(JSON.stringify({ invalid: 'message' }));
+      });
+
+      wss.on('message', (data) => {
+        const received = JSON.parse(data.toString());
+        expect(received.metadata.error).toBe(true);
+        resolve();
+      });
+    });
+  });
+
+  it('should handle connection closure gracefully', () => {
+    return new Promise<void>((resolve) => {
+      wss = new WebSocket(url);
+
+      wss.on('open', () => {
+        wss.close();
+      });
+
+      wss.on('close', () => {
+        expect(wss.readyState).toBe(WebSocket.CLOSED);
+        resolve();
+      });
     });
   });
 });
