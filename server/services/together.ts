@@ -15,21 +15,19 @@ export class TogetherService {
   private baseUrl: string;
   private fallbackMode: boolean;
   private model: string;
-  private simulateErrors: boolean;
 
-  constructor(options = { simulateErrors: false }) {
+  constructor() {
     this.apiKey = process.env.TOGETHER_API_KEY || "";
-    this.baseUrl = "https://api.together.xyz/inference";
+    this.baseUrl = "https://api.together.xyz/v1";
     this.fallbackMode = !this.apiKey;
     this.model = "togethercomputer/CodeLlama-34b-Instruct";
-    this.simulateErrors = options.simulateErrors;
 
     if (!this.apiKey) {
       console.warn("Together API key is not set. Using fallback mode for testing.");
     }
   }
 
-  async generateResponse(prompt: string): Promise<{ content: string; error?: boolean }> {
+  async generateResponse(prompt: string): Promise<{ content: string; error: boolean }> {
     if (this.fallbackMode) {
       return {
         content: "This is a test response. The assistant is currently in demo mode.",
@@ -38,7 +36,7 @@ export class TogetherService {
     }
 
     try {
-      const response = await fetch(this.baseUrl, {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -46,13 +44,15 @@ export class TogetherService {
         },
         body: JSON.stringify({
           model: this.model,
-          prompt: prompt,
-          max_tokens: 1024,
+          messages: [
+            {
+              role: "system",
+              content: "You are a helpful AI coding assistant. Provide clear, concise responses with code examples when relevant.",
+            },
+            { role: "user", content: prompt }
+          ],
           temperature: 0.7,
-          top_p: 0.7,
-          top_k: 50,
-          repetition_penalty: 1,
-          stop: ["</s>", "[/INST]"]
+          max_tokens: 1024
         }),
       });
 
@@ -80,8 +80,10 @@ export class TogetherService {
       }
 
       const data = await response.json();
-      if (!data.output || typeof data.output.text !== 'string') {
-        console.error("Invalid API response format:", data);
+      const parsed = togetherResponseSchema.safeParse(data);
+
+      if (!parsed.success) {
+        console.error("Invalid API response format:", parsed.error);
         return {
           content: "Received an invalid response format. Switching to demo mode.",
           error: true
@@ -89,7 +91,7 @@ export class TogetherService {
       }
 
       return { 
-        content: data.output.text.trim(),
+        content: parsed.data.choices[0].message.content,
         error: false
       };
     } catch (error) {
