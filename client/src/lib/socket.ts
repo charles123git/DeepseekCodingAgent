@@ -60,9 +60,7 @@ export class SocketManager extends EventEmitter {
 
     try {
       this.connectionState = 'connecting';
-      const socketUrl = import.meta.env.PROD 
-        ? window.location.origin
-        : `${window.location.protocol}//${window.location.hostname}:5000`;
+      const socketUrl = window.location.origin;
 
       log("Initializing WebSocket connection", { 
         level: 'info',
@@ -76,7 +74,8 @@ export class SocketManager extends EventEmitter {
         timeout: this.config.connectionTimeout,
         transports: ['websocket', 'polling'],
         forceNew: true,
-        autoConnect: true
+        autoConnect: true,
+        withCredentials: true
       });
 
       this.setupEventHandlers();

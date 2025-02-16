@@ -47,22 +47,30 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Create HTTP server first
   const server = await registerRoutes(app);
+
+  // Skip WebSocket handling for non-ws paths
+  app.use((req, res, next) => {
+    if (!req.url?.startsWith('/ws')) {
+      return next();
+    }
+    // Let Socket.IO handle WebSocket requests
+    return next('route');
+  });
 
   // Initialize Socket.IO with enhanced configuration
   const io = new Server(server, {
     path: '/ws',
     cors: {
-      origin: app.get('env') === 'production'
-        ? false
-        : ['http://localhost:5000', 'http://0.0.0.0:5000', 'http://127.0.0.1:5000'],
+      origin: true,
       methods: ['GET', 'POST'],
       credentials: true
     },
+    connectTimeout: 45000,
     pingTimeout: 10000,
     pingInterval: 5000,
-    transports: ['websocket', 'polling'],
-    allowEIO3: true
+    transports: ['websocket', 'polling']
   });
 
   // Track connected clients
@@ -77,19 +85,13 @@ app.use((req, res, next) => {
       try {
         // Validate incoming message
         const validatedMessage = MessageSchema.parse(data);
-
-        log(`Received message from client ${socket.id}`, {
-          level: 'info',
-          context: { messageType: validatedMessage.role }
-        });
+        log(`Received message from client ${socket.id}`);
 
         // Broadcast validated message to all clients except sender
         socket.broadcast.emit('message', validatedMessage);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        log(`Message validation error from ${socket.id}: ${errorMessage}`, {
-          level: 'error'
-        });
+        log(`Message validation error from ${socket.id}: ${errorMessage}`);
 
         // Send error back to the client
         socket.emit('error', {
@@ -105,10 +107,7 @@ app.use((req, res, next) => {
     });
 
     socket.on('error', (error) => {
-      log(`Socket error for ${socket.id}`, {
-        level: 'error',
-        context: { error: error instanceof Error ? error.message : 'Unknown error' }
-      });
+      log(`Socket error for ${socket.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     });
 
     // Implement ping/pong for connection health check
@@ -121,23 +120,19 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
-    log(`Global error handler: ${message}`, {
-      level: 'error',
-      context: { status, stack: err.stack }
-    });
-
+    log(`Global error handler: ${message} (${status})`);
     res.status(status).json({ message });
   });
 
+  // Setup Vite AFTER Socket.IO initialization
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  const PORT = 5000;
-  server.listen(PORT, "0.0.0.0", () => {
-    log(`Server running on port ${PORT}`, { level: 'info' });
+  const PORT = process.env.PORT || 5000;
+  server.listen(PORT, () => {
+    log(`Server running on port ${PORT}`);
   });
 })();
