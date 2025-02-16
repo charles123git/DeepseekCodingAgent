@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Send, AlertCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import type { Message } from "@shared/schema";
 
@@ -55,11 +54,11 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full">
+    <div className="min-h-[calc(100vh-2rem)] flex flex-col h-full bg-background">
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-4xl mx-auto">
           {hasInsufficientBalance && (
-            <div className="px-4 py-3 mb-4 text-sm bg-background border rounded-lg">
+            <div className="px-4 py-3 mb-4 text-sm bg-background/50 border border-border/50 rounded-lg">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <AlertCircle className="h-4 w-4" />
                 <p>The AI service is temporarily paused.</p>
@@ -90,12 +89,12 @@ export function ChatInterface() {
           ))}
         </div>
       </ScrollArea>
-      <form onSubmit={handleSubmit} className="p-4 border-t">
-        <div className="flex gap-2">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-border/50 bg-background/50 backdrop-blur-sm">
+        <div className="flex gap-2 max-w-4xl mx-auto">
           <Input
             ref={inputRef}
             placeholder={hasInsufficientBalance ? "Service temporarily unavailable" : "Type your message..."}
-            className="flex-1"
+            className="flex-1 bg-background/50"
           />
           <Button 
             type="submit" 
