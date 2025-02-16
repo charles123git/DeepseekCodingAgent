@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge";
 import winston from 'winston';
 
 const logger = winston.createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  level: import.meta.env.PROD ? 'info' : 'debug',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json(),

@@ -50,7 +50,11 @@ export class SocketManager extends EventEmitter {
 
     try {
       this.connectionState = 'connecting';
-      this.socket = io({
+      const socketUrl = import.meta.env.PROD 
+        ? window.location.origin
+        : `${window.location.protocol}//${window.location.host}`;
+
+      this.socket = io(socketUrl, {
         path: "/ws",
         reconnectionAttempts: this.config.maxRetries,
         reconnectionDelay: this.config.initialRetryDelay,
