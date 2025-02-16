@@ -24,7 +24,7 @@ export default function Chat() {
 
   const sendMessage = useMutation({
     mutationFn: async (data: ChatFormData) => {
-      return apiRequest("/api/messages", {
+      const response = await apiRequest("/api/messages", {
         method: "POST",
         body: JSON.stringify({
           content: data.content,
@@ -32,9 +32,16 @@ export default function Chat() {
           metadata: { provider: selectedProvider }
         }),
       });
+      return response;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages"] });
+    onSuccess: (newMessages: Message[]) => {
+      // Update the messages cache with the new messages array
+      queryClient.setQueryData<Message[]>(["/api/messages"], (oldMessages = []) => {
+        // Ensure we don't add duplicate messages
+        const newMessageIds = new Set(newMessages.map(msg => msg.id));
+        const filteredOldMessages = oldMessages.filter(msg => !newMessageIds.has(msg.id));
+        return [...filteredOldMessages, ...newMessages];
+      });
       reset();
     },
   });
