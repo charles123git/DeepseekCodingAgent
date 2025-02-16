@@ -23,7 +23,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/messages", async (req, res) => {
-    const parsed = insertMessageSchema.safeParse(req.body);
+    const parsed = insertMessageSchema.safeParse({
+      ...req.body,
+      timestamp: new Date(req.body.timestamp)
+    });
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error });
       return;
@@ -56,7 +59,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   io.on("connection", (socket) => {
     log("New Socket.IO connection established");
 
-    // Handle incoming messages
     socket.on("message", async (data) => {
       try {
         log(`Received message: ${JSON.stringify(data)}`);
@@ -64,7 +66,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const parsed = insertMessageSchema.safeParse({
           ...data,
           metadata: data.metadata || {},
-          timestamp: data.timestamp || new Date().toISOString(),
+          timestamp: new Date(data.timestamp || new Date().toISOString())
         });
 
         if (!parsed.success) {
@@ -76,7 +78,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               error: true,
               validationError: parsed.error.errors
             },
-            timestamp: new Date().toISOString(),
+            timestamp: new Date(),
           });
           return;
         }
@@ -84,10 +86,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const savedMessage = await storage.addMessage(parsed.data);
         const response = await agentManager.handleMessage(savedMessage);
 
-        // Broadcast the user message to all clients
         io.emit("message", savedMessage);
 
-        // If there's a response, save and broadcast it
         if (response) {
           const savedResponse = await storage.addMessage(response);
           log(`Sending AI response: ${JSON.stringify(savedResponse)}`);
@@ -103,7 +103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             error: true,
             errorMessage: errorMessage
           },
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(),
         });
       }
     });
