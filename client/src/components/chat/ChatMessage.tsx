@@ -15,7 +15,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const parts = hasCode ? message.content.split(/(```[\s\S]*?```)/g) : [message.content];
 
   return (
-    <div 
+    <div
       className={cn(
         "flex gap-2",
         isUser ? "justify-end" : "justify-start",
@@ -29,7 +29,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         <AlertCircle className="h-4 w-4 text-destructive/70 mt-1 flex-shrink-0" />
       )}
 
-      <div 
+      <div
         className={cn(
           "max-w-[85%] space-y-2",
           isUser && "bg-gradient-to-r from-gray-700 to-gray-600 text-white p-2 rounded-lg",
